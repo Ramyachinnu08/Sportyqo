@@ -1,11 +1,80 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sportyqo_api.dart';
 
-class QoScoreCardScreen extends StatelessWidget {
+class QoScoreCardScreen extends StatefulWidget {
   const QoScoreCardScreen({super.key});
 
   @override
+  State<QoScoreCardScreen> createState() => _QoScoreCardScreenState();
+}
+
+class _QoScoreCardScreenState extends State<QoScoreCardScreen> {
+  int _qoScore = 0;
+  int _matchCount = 0;
+  int _totalRuns = 0;
+  int _totalWickets = 0;
+  int _matchPoints = 0;
+  int? _rank;
+  bool _loading = true;
+
+  String get _cardName {
+    if (_qoScore >= 750) return 'Purple Card';
+    if (_qoScore >= 500) return 'Blue Card';
+    if (_qoScore >= 250) return 'Silver Card';
+    return 'Bronze Card';
+  }
+
+  String get _levelLabel {
+    if (_qoScore >= 750) return 'Elite Performer';
+    if (_qoScore >= 500) return 'Strong Performer';
+    if (_qoScore >= 250) return 'Rising Player';
+    return 'Getting Started';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.playerPerformance();
+      if (!mounted) return;
+      final recent = (data['recentMatches'] as List<dynamic>? ?? [])
+          .cast<Map<String, dynamic>>();
+      var runs = 0, wickets = 0, pts = 0;
+      for (final m in recent) {
+        final st = m['stats'] as Map<String, dynamic>? ?? {};
+        runs += (st['runs'] as num?)?.toInt() ?? 0;
+        wickets += (st['wickets'] as num?)?.toInt() ?? 0;
+        pts += (m['qoPoints'] as num?)?.toInt() ?? 0;
+      }
+      final ranking = data['ranking'] as Map<String, dynamic>?;
+      setState(() {
+        _rank = (ranking?['position'] as num?)?.toInt();
+        _qoScore = (data['qoScore'] as num?)?.toInt() ?? 0;
+        _matchCount = recent.length;
+        _totalRuns = runs;
+        _totalWickets = wickets;
+        _matchPoints = pts;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0A0A1A),
+        body: Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A1A),
       body: SafeArea(
@@ -48,7 +117,7 @@ class QoScoreCardScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text('Qo Score', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                            const Text('720', style: TextStyle(color: Colors.white, fontSize: 64, fontWeight: FontWeight.w800, height: 1)),
+                            Text('$_qoScore', style: const TextStyle(color: Colors.white, fontSize: 64, fontWeight: FontWeight.w800, height: 1)),
                             const SizedBox(height: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -60,7 +129,7 @@ class QoScoreCardScreen extends StatelessWidget {
                               child: Row(mainAxisSize: MainAxisSize.min, children: [
                                 Container(width: 8, height: 8, decoration: BoxDecoration(color: AppColors.green, shape: BoxShape.circle)),
                                 const SizedBox(width: 6),
-                                const Text('Purple Card', style: TextStyle(color: AppColors.green, fontSize: 13, fontWeight: FontWeight.w600)),
+                                Text(_cardName, style: const TextStyle(color: AppColors.green, fontSize: 13, fontWeight: FontWeight.w600)),
                               ]),
                             ),
                           ],
@@ -75,16 +144,16 @@ class QoScoreCardScreen extends StatelessWidget {
                     const SizedBox(height: 20),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text('Level 4', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                        Text('Pro Player ⭐', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      children: [
+                        Text(_cardName, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        Text(_levelLabel, style: const TextStyle(color: Colors.white70, fontSize: 12)),
                       ],
                     ),
                     const SizedBox(height: 8),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
-                        value: 0.72,
+                        value: (_qoScore / 1000).clamp(0.0, 1.0),
                         backgroundColor: Colors.white.withOpacity(0.2),
                         color: AppColors.green,
                         minHeight: 8,
@@ -93,9 +162,9 @@ class QoScoreCardScreen extends StatelessWidget {
                     const SizedBox(height: 6),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text('720 pts', style: TextStyle(color: Colors.white54, fontSize: 11)),
-                        Text('1000 pts to next level', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                      children: [
+                        Text('$_qoScore pts', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                        Text('${(1000 - _qoScore).clamp(0, 1000)} pts to next level', style: const TextStyle(color: Colors.white54, fontSize: 11)),
                       ],
                     ),
                   ],
@@ -106,15 +175,15 @@ class QoScoreCardScreen extends StatelessWidget {
 
               // Stats Grid
               Row(children: [
-                Expanded(child: _StatCard(label: 'Current Rank', value: '#14', icon: Icons.leaderboard, color: Colors.amber)),
+                Expanded(child: _StatCard(label: 'Current Rank', value: _rank == null ? '—' : '#$_rank', icon: Icons.leaderboard, color: Colors.amber)),
                 const SizedBox(width: 12),
-                Expanded(child: _StatCard(label: 'Matches', value: '24', icon: Icons.sports_cricket, color: AppColors.primary)),
+                Expanded(child: _StatCard(label: 'Matches', value: '$_matchCount', icon: Icons.sports_cricket, color: AppColors.primary)),
               ]),
               const SizedBox(height: 12),
               Row(children: [
-                Expanded(child: _StatCard(label: 'Total Runs', value: '1286', icon: Icons.trending_up, color: AppColors.green)),
+                Expanded(child: _StatCard(label: 'Total Runs', value: '$_totalRuns', icon: Icons.trending_up, color: AppColors.green)),
                 const SizedBox(width: 12),
-                Expanded(child: _StatCard(label: 'Wickets', value: '36', icon: Icons.sports, color: Colors.orange)),
+                Expanded(child: _StatCard(label: 'Wickets', value: '$_totalWickets', icon: Icons.sports, color: Colors.orange)),
               ]),
 
               const SizedBox(height: 20),
@@ -132,15 +201,13 @@ class QoScoreCardScreen extends StatelessWidget {
                   children: [
                     const Text('Points Breakdown', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
                     const SizedBox(height: 16),
-                    _PointRow(label: 'Match Performance', points: 180, icon: Icons.sports_cricket),
-                    _PointRow(label: 'Bonus Points', points: 40, icon: Icons.star),
-                    _PointRow(label: 'Consistency', points: 22, icon: Icons.trending_up),
+                    _PointRow(label: 'Match Performance', points: _matchPoints, icon: Icons.sports_cricket),
                     const Divider(color: Colors.white10, height: 24),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Total', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
-                        const Text('242 pts', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 18)),
+                        const Text('Total Qo Score', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                        Text('$_qoScore pts', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 18)),
                       ],
                     ),
                   ],
@@ -162,11 +229,13 @@ class QoScoreCardScreen extends StatelessWidget {
                   children: [
                     const Text('Card Progress', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
                     const SizedBox(height: 16),
-                    _CardProgress(label: '🟣 Purple Card', value: 720, max: 1000, color: AppColors.primary),
+                    _CardProgress(label: '🥉 Bronze Card', value: _qoScore.clamp(0, 250), max: 250, color: Colors.orange),
                     const SizedBox(height: 12),
-                    _CardProgress(label: '🟢 Green Card', value: 0, max: 2000, color: AppColors.green),
+                    _CardProgress(label: '🥈 Silver Card', value: _qoScore.clamp(0, 500), max: 500, color: Colors.blueGrey),
                     const SizedBox(height: 12),
-                    _CardProgress(label: '🔵 Blue Card', value: 0, max: 5000, color: Colors.blueAccent),
+                    _CardProgress(label: '🔵 Blue Card', value: _qoScore.clamp(0, 750), max: 750, color: Colors.blueAccent),
+                    const SizedBox(height: 12),
+                    _CardProgress(label: '🟣 Purple Card', value: _qoScore.clamp(0, 1000), max: 1000, color: AppColors.primary),
                   ],
                 ),
               ),

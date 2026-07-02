@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
 import '../auth/choose_role_screen.dart';
+import '../../services/sportyqo_api.dart';
+import '../../services/auth_service.dart';
+import '../../services/api_client.dart';
 
 class CoachProfileScreen extends StatefulWidget {
   const CoachProfileScreen({super.key});
@@ -16,6 +19,73 @@ class _CoachProfileScreenState
   bool _notificationsOn = true;
   bool _darkMode = true;
   bool _privateProfile = false;
+
+  // Live profile data (GET /me, /coach/dashboard, /coach/performance,
+  // /coach/certifications). Placeholders show until loaded.
+  String _name = '';
+  String _title = 'Coach';
+  String _academy = '';
+  String _location = '';
+  String _bio = '';
+  String _yearsExp = '—';
+  bool _isVerified = false;
+  int _playerCount = 0;
+  int _leagueCount = 0;
+  int _matchCount = 0;
+  int _recCount = 0;
+  String _certTitle = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final me = await SportyQoApi.me();
+      if (!mounted) return;
+      setState(() {
+        _name = me['fullName'] as String? ?? '';
+        _title = me['title'] as String? ?? 'Coach';
+        _academy = me['academy'] as String? ?? '';
+        _location = me['location'] as String? ?? '';
+        _bio = me['bio'] as String? ?? '';
+        _isVerified = me['isVerifiedCoach'] == true;
+        final y = me['yearsExperience'];
+        _yearsExp = y == null ? '—' : '$y';
+      });
+    } catch (_) {}
+    try {
+      final dash = await SportyQoApi.coachDashboard();
+      if (!mounted) return;
+      final counts = dash['counts'] as Map<String, dynamic>? ?? {};
+      setState(() {
+        _playerCount = (counts['players'] as num?)?.toInt() ?? 0;
+        _leagueCount = (counts['leagues'] as num?)?.toInt() ?? 0;
+        _recCount = (counts['recommendations'] as num?)?.toInt() ?? 0;
+      });
+    } catch (_) {}
+    try {
+      final perf = await SportyQoApi.coachPerformance();
+      if (!mounted) return;
+      final totals = perf['totals'] as Map<String, dynamic>? ?? {};
+      setState(() {
+        _matchCount = (totals['matchesCompleted'] as num?)?.toInt() ?? 0;
+      });
+    } catch (_) {}
+    try {
+      final certs = await SportyQoApi.coachCertifications();
+      if (!mounted) return;
+      final approved = certs.cast<Map<String, dynamic>>().where(
+          (c) => (c['status'] as String?)?.toUpperCase() == 'APPROVED');
+      setState(() {
+        _certTitle = approved.isEmpty
+            ? ''
+            : approved.first['title'] as String? ?? '';
+      });
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -179,81 +249,93 @@ class _CoachProfileScreenState
                               CrossAxisAlignment.start,
                               children: [
                                 Row(children: [
-                                  const Text('Rahul Sharma',
-                                      style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 18,
-                                          fontWeight:
-                                          FontWeight.w800)),
+                                  Flexible(
+                                    child: Text(
+                                        _name.isEmpty ? 'Coach' : _name,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 18,
+                                            fontWeight:
+                                            FontWeight.w800)),
+                                  ),
                                   const SizedBox(width: 6),
-                                  const Icon(Icons.verified,
-                                      color: Color(0xFF1A6BFF),
-                                      size: 16),
+                                  if (_isVerified)
+                                    const Icon(Icons.verified,
+                                        color: Color(0xFF1A6BFF),
+                                        size: 16),
                                 ]),
-                                const Text('Head Coach',
-                                    style: TextStyle(
+                                Text(_title,
+                                    style: const TextStyle(
                                         color:
                                         Color(0xFF00C853),
                                         fontSize: 13,
                                         fontWeight:
                                         FontWeight.w600)),
-                                const Text(
-                                    'Falcons Cricket Academy',
-                                    style: TextStyle(
+                                Text(
+                                    _academy,
+                                    style: const TextStyle(
                                         color: Colors.white60,
                                         fontSize: 12)),
                                 const SizedBox(height: 6),
-                                Row(children: const [
-                                  Icon(
-                                      Icons
-                                          .location_on_outlined,
+                                if (_location.isNotEmpty)
+                                  Row(children: [
+                                    const Icon(
+                                        Icons
+                                            .location_on_outlined,
+                                        color: Colors.white38,
+                                        size: 12),
+                                    const SizedBox(width: 3),
+                                    Text(_location,
+                                        style: const TextStyle(
+                                            color: Colors.white38,
+                                            fontSize: 11)),
+                                  ]),
+                                const SizedBox(height: 4),
+                                Row(children: [
+                                  const Icon(Icons.access_time,
                                       color: Colors.white38,
                                       size: 12),
-                                  SizedBox(width: 3),
-                                  Text('Bangalore, Karnataka',
-                                      style: TextStyle(
+                                  const SizedBox(width: 3),
+                                  Text('$_yearsExp Years Experience',
+                                      style: const TextStyle(
                                           color: Colors.white38,
                                           fontSize: 11)),
                                 ]),
                                 const SizedBox(height: 4),
-                                Row(children: const [
-                                  Icon(Icons.access_time,
-                                      color: Colors.white38,
-                                      size: 12),
-                                  SizedBox(width: 3),
-                                  Text('6+ Years Experience',
-                                      style: TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: 11)),
-                                ]),
-                                const SizedBox(height: 4),
-                                Row(children: const [
-                                  Icon(
-                                      Icons
-                                          .workspace_premium_outlined,
-                                      color: Colors.white38,
-                                      size: 12),
-                                  SizedBox(width: 3),
-                                  Text(
-                                      'BCCI Level 2 Certified',
-                                      style: TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: 11)),
-                                ]),
+                                if (_certTitle.isNotEmpty)
+                                  Row(children: [
+                                    const Icon(
+                                        Icons
+                                            .workspace_premium_outlined,
+                                        color: Colors.white38,
+                                        size: 12),
+                                    const SizedBox(width: 3),
+                                    Flexible(
+                                      child: Text(
+                                          _certTitle,
+                                          overflow:
+                                              TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                              color: Colors.white38,
+                                              fontSize: 11)),
+                                    ),
+                                  ]),
                                 const SizedBox(height: 6),
-                                Row(children: const [
-                                  Icon(Icons.check_circle,
-                                      color: Color(0xFF00C853),
-                                      size: 14),
-                                  SizedBox(width: 4),
-                                  Text('Verified Coach',
-                                      style: TextStyle(
-                                          color:
-                                          Color(0xFF00C853),
-                                          fontSize: 12,
-                                          fontWeight:
-                                          FontWeight.w600)),
-                                ]),
+                                if (_isVerified)
+                                  Row(children: const [
+                                    Icon(Icons.check_circle,
+                                        color: Color(0xFF00C853),
+                                        size: 14),
+                                    SizedBox(width: 4),
+                                    Text('Verified Coach',
+                                        style: TextStyle(
+                                            color:
+                                            Color(0xFF00C853),
+                                            fontSize: 12,
+                                            fontWeight:
+                                            FontWeight.w600)),
+                                  ]),
                               ],
                             ),
                           ),
@@ -282,25 +364,25 @@ class _CoachProfileScreenState
                           children: [
                             _StatCol(
                                 icon: Icons.people_outline,
-                                value: '32',
+                                value: '$_playerCount',
                                 label: 'Total\nPlayers'),
                             _Divider(),
                             _StatCol(
                                 icon: Icons
                                     .emoji_events_outlined,
-                                value: '28',
-                                label: 'Tournaments'),
+                                value: '$_leagueCount',
+                                label: 'Leagues'),
                             _Divider(),
                             _StatCol(
                                 icon: Icons
-                                    .military_tech_outlined,
-                                value: '16',
-                                label: 'Awards'),
+                                    .sports_cricket_outlined,
+                                value: '$_matchCount',
+                                label: 'Matches'),
                             _Divider(),
                             _StatCol(
                                 icon: Icons
                                     .access_time_outlined,
-                                value: '6+',
+                                value: _yearsExp,
                                 label: 'Years\nExperience'),
                           ],
                         ),
@@ -339,9 +421,11 @@ class _CoachProfileScreenState
                                       fontSize: 15)),
                             ]),
                             const SizedBox(height: 10),
-                            const Text(
-                                'Passionate about developing young talent and building winning teams. Focused on discipline, skill development and holistic growth on and off the field.',
-                                style: TextStyle(
+                            Text(
+                                _bio.isEmpty
+                                    ? 'No bio added yet. Tap Edit Profile to add one.'
+                                    : _bio,
+                                style: const TextStyle(
                                     color: Colors.white54,
                                     fontSize: 13,
                                     height: 1.6)),
@@ -385,27 +469,15 @@ class _CoachProfileScreenState
                             ]),
                             const SizedBox(height: 16),
                             _ExperienceTile(
-                              period: '2021 – Present',
-                              role: 'Head Coach',
-                              org: 'Falcons Cricket Academy, Bangalore',
-                              desc: 'Leading academy programs, player development and tournament participation.',
+                              period: 'Present',
+                              role: _title,
+                              org: _academy.isEmpty
+                                  ? 'Independent'
+                                  : _academy,
+                              desc: _bio.isEmpty
+                                  ? 'Coaching on SportyQo.'
+                                  : _bio,
                               isActive: true,
-                            ),
-                            const SizedBox(height: 14),
-                            _ExperienceTile(
-                              period: '2018 – 2021',
-                              role: 'Assistant Coach',
-                              org: 'Karnataka Cricket Club',
-                              desc: 'Assisted in player training, match strategies and youth development programs.',
-                              isActive: false,
-                            ),
-                            const SizedBox(height: 14),
-                            _ExperienceTile(
-                              period: '2015 – 2018',
-                              role: 'Junior Coach',
-                              org: 'Rising Stars Cricket Academy',
-                              desc: 'Worked with junior teams and conducted skill improvement sessions.',
-                              isActive: false,
                             ),
                           ],
                         ),
@@ -468,20 +540,20 @@ class _CoachProfileScreenState
                               MainAxisAlignment.spaceAround,
                               children: [
                                 _RecommendCard(
-                                    value: '47',
+                                    value: '$_recCount',
                                     label:
                                     'Players\nRecommended',
                                     icon: Icons.people),
                                 _RecommendCard(
-                                    value: '35',
-                                    label: 'Shortlisted',
+                                    value: '$_playerCount',
+                                    label: 'Players\nCoached',
                                     icon: Icons
                                         .check_circle_outline,
                                     color: const Color(
                                         0xFF00C853)),
                                 _RecommendCard(
-                                    value: '12',
-                                    label: 'Selected',
+                                    value: '$_matchCount',
+                                    label: 'Matches\nCompleted',
                                     icon: Icons
                                         .emoji_events_outlined,
                                     color: const Color(
@@ -680,15 +752,10 @@ class _CoachProfileScreenState
 
   // ── Edit Profile ──
   void _showEditProfile(BuildContext context) {
-    final nameController =
-    TextEditingController(text: 'Rahul Sharma');
-    final roleController =
-    TextEditingController(text: 'Head Coach');
-    final orgController =
-    TextEditingController(text: 'Falcons Cricket Academy');
-    final bioController = TextEditingController(
-        text:
-        'Passionate about developing young talent and building winning teams.');
+    final nameController = TextEditingController(text: _name);
+    final roleController = TextEditingController(text: _title);
+    final orgController = TextEditingController(text: _academy);
+    final bioController = TextEditingController(text: _bio);
 
     showModalBottomSheet(
       context: context,
@@ -774,17 +841,43 @@ class _CoachProfileScreenState
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(
-                      const SnackBar(
-                        content:
-                        Text('Profile updated! ✅'),
-                        backgroundColor:
-                        Color(0xFF00C853),
-                      ),
-                    );
+                    try {
+                      await ApiClient.instance
+                          .patch('/me/profile', body: {
+                        'fullName': nameController.text.trim(),
+                        'title': roleController.text.trim(),
+                        'academy': orgController.text.trim(),
+                        'bio': bioController.text.trim(),
+                      });
+                      if (!mounted) return;
+                      setState(() {
+                        _name = nameController.text.trim();
+                        _title = roleController.text.trim();
+                        _academy = orgController.text.trim();
+                        _bio = bioController.text.trim();
+                      });
+                      ScaffoldMessenger.of(this.context)
+                          .showSnackBar(
+                        const SnackBar(
+                          content:
+                          Text('Profile updated! ✅'),
+                          backgroundColor:
+                          Color(0xFF00C853),
+                        ),
+                      );
+                    } catch (_) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(this.context)
+                          .showSnackBar(
+                        const SnackBar(
+                          content:
+                          Text('Could not update profile'),
+                          backgroundColor: Colors.redAccent,
+                        ),
+                      );
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor:
@@ -1304,6 +1397,7 @@ class _CoachProfileScreenState
           ElevatedButton(
             onPressed: () {
               Navigator.pop(dialogContext);
+              AuthService.logout();
               Future.microtask(() =>
                   Navigator.of(context)
                       .pushAndRemoveUntil(

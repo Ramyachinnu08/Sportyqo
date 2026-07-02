@@ -99,6 +99,11 @@ class ApiClient {
     return _send('PATCH', path, body: body, auth: auth);
   }
 
+  Future<dynamic> delete(String path,
+      {Object? body, bool auth = true}) {
+    return _send('DELETE', path, body: body, auth: auth);
+  }
+
   /// Multipart POST (league creation with logos, avatar upload, documents).
   /// [fields] are plain form fields; [files] maps field name -> file path.
   Future<dynamic> postMultipart(String path,

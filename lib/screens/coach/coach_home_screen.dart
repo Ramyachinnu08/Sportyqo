@@ -238,7 +238,7 @@ class _CoachHomeTabState extends State<_CoachHomeTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(children: [
-                      Text(_coachName ?? 'Coach Suneeth',
+                      Text(_coachName ?? 'Coach',
                           style: const TextStyle(
                               color: Colors.white,
                               fontSize: 26,
@@ -258,14 +258,14 @@ class _CoachHomeTabState extends State<_CoachHomeTab> {
                     ]),
                     const SizedBox(height: 4),
                     Row(children: [
-                      Text(_coachTitle ?? 'Head Coach',
+                      Text(_coachTitle ?? 'Coach',
                           style: const TextStyle(
                               color: Colors.white54, fontSize: 14)),
                       const Text(' • ',
                           style: TextStyle(
                               color: Colors.white24, fontSize: 14)),
                       Flexible(
-                        child: Text(_academy ?? 'Falcons Cricket Academy',
+                        child: Text(_academy ?? '',
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                                 color: Colors.white54, fontSize: 14)),

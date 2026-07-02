@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sportyqo_api.dart';
+import '../../services/api_client.dart';
 
 class CoachCertificationScreen extends StatefulWidget {
   const CoachCertificationScreen({super.key});
@@ -12,17 +14,72 @@ class CoachCertificationScreen extends StatefulWidget {
 class _CoachCertificationScreenState
     extends State<CoachCertificationScreen> {
   int _step = 0;
+  bool _submitting = false;
 
-  final _nameController =
-  TextEditingController(text: 'Rahul Sharma');
-  final _academyController = TextEditingController(
-      text: 'Falcons Cricket Academy');
-  final _mobileController =
-  TextEditingController(text: '98765 43210');
-  final _emailController = TextEditingController(
-      text: 'rahul.sharma@gmail.com');
+  final _nameController = TextEditingController();
+  final _academyController = TextEditingController();
+  final _mobileController = TextEditingController();
+  final _emailController = TextEditingController();
   String _selectedRole = 'Head Coach';
   String _selectedExperience = '6+ Years';
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    // Prefill identity from the logged-in coach profile.
+    try {
+      final me = await SportyQoApi.me();
+      if (!mounted) return;
+      setState(() {
+        _nameController.text = me['fullName'] as String? ?? '';
+        _academyController.text = me['academy'] as String? ?? '';
+        _mobileController.text = me['phone'] as String? ?? '';
+        _emailController.text = me['email'] as String? ?? '';
+        if (me['title'] is String && _roles.contains(me['title'])) {
+          _selectedRole = me['title'] as String;
+        }
+        if (me['isVerifiedCoach'] == true) _step = 7; // already verified
+      });
+    } catch (_) {}
+    // If a request already exists, jump straight to its real status.
+    if (_step == 7) return;
+    try {
+      final certs = await SportyQoApi.coachCertifications();
+      if (!mounted || certs.isEmpty) return;
+      final latest = certs.first as Map<String, dynamic>;
+      final status = (latest['status'] as String?)?.toUpperCase();
+      setState(() {
+        if (status == 'APPROVED') {
+          _step = 7;
+        } else if (status == 'PENDING') {
+          _step = 6;
+        }
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _submitRequest() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      await ApiClient.instance.postMultipart('/coach/certifications', fields: {
+        'title': '$_selectedRole Certification',
+        'issuer': _academyController.text.trim(),
+      });
+      if (!mounted) return;
+      setState(() => _step = 4);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.message), backgroundColor: Colors.redAccent));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
 
   final List<String> _roles = [
     'Head Coach',
@@ -364,7 +421,7 @@ class _CoachCertificationScreenState
           child: SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => setState(() => _step = 4),
+              onPressed: _submitting ? null : _submitRequest,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF1A6BFF),
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -441,49 +498,20 @@ class _CoachCertificationScreenState
 
           const SizedBox(height: 20),
 
-          // ── Navigation buttons to view status screens ──
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Column(children: [
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => setState(() => _step = 5),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A6BFF),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: const Text('Go to Home', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1A6BFF),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
+                child: const Text('Done', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
               ),
-              const SizedBox(height: 10),
-              Row(children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => setState(() => _step = 6),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.amber),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text('Under Review', style: TextStyle(color: Colors.amber, fontSize: 13, fontWeight: FontWeight.w600)),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => setState(() => _step = 7),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFF00C853)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text('Verified ✅', style: TextStyle(color: Color(0xFF00C853), fontSize: 13, fontWeight: FontWeight.w600)),
-                  ),
-                ),
-              ]),
-            ]),
+            ),
           ),
 
           const SizedBox(height: 32),
@@ -551,15 +579,15 @@ class _CoachCertificationScreenState
                 const SizedBox(height: 12),
                 Row(children: [
                   const SizedBox(width: 80, child: Text('Name', style: TextStyle(color: Colors.white38, fontSize: 12))),
-                  Expanded(child: Text('Rahul Sharma', style: const TextStyle(color: Colors.white, fontSize: 13))),
+                  Expanded(child: Text(_nameController.text.isEmpty ? '—' : _nameController.text, style: const TextStyle(color: Colors.white, fontSize: 13))),
                   if (level == 2) const Icon(Icons.check_circle, color: Color(0xFF1A6BFF), size: 18),
                 ]),
                 const Divider(color: Colors.white10, height: 16),
-                _RRow('Academy', 'Falcons Cricket Academy'),
+                _RRow('Academy', _academyController.text.isEmpty ? '—' : _academyController.text),
                 const Divider(color: Colors.white10, height: 16),
-                _RRow('Role', 'Head Coach'),
+                _RRow('Role', _selectedRole),
                 const Divider(color: Colors.white10, height: 16),
-                _RRow(level == 2 ? 'Verified On' : 'Applied On', level == 2 ? '22 May 2025' : '20 May 2025'),
+                _RRow('Status', level == 2 ? 'Verified' : level == 1 ? 'Under Review' : 'Received'),
               ]),
             ),
           ),
@@ -577,16 +605,16 @@ class _CoachCertificationScreenState
                 children: [
                   const Text('Current Status', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
                   const SizedBox(height: 12),
-                  _Timeline(title: 'Request Received', date: '20 May 2025', state: 'done', isLast: false),
+                  _Timeline(title: 'Request Received', date: 'Done', state: 'done', isLast: false),
                   _Timeline(
                     title: 'Under Review',
-                    date: level >= 1 ? (level == 1 ? 'In Progress' : '21 May 2025') : '',
+                    date: level >= 1 ? (level == 1 ? 'In Progress' : 'Done') : '',
                     state: level >= 2 ? 'done' : level == 1 ? 'active' : 'pending',
                     isLast: false,
                   ),
                   _Timeline(
                     title: 'Verified',
-                    date: level >= 2 ? '22 May 2025' : '',
+                    date: level >= 2 ? 'Done' : '',
                     state: level >= 2 ? 'done' : 'pending',
                     isLast: true,
                   ),

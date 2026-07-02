@@ -225,12 +225,11 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: AppColors.primary.withOpacity(0.4)),
                         ),
-                        child: Column(children: const [
-                          Text('Coach Score', style: TextStyle(color: AppColors.primary, fontSize: 9, fontWeight: FontWeight.w600)),
-                          Text('92', style: TextStyle(color: AppColors.primary, fontSize: 28, fontWeight: FontWeight.w800, height: 1.1)),
-                          Text('Rank', style: TextStyle(color: Colors.white38, fontSize: 9)),
-                          Text('#3', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
-                          Text('In Karnataka\nCoaches', style: TextStyle(color: Colors.white38, fontSize: 8), textAlign: TextAlign.center),
+                        child: Column(children: [
+                          const Text('Players', style: TextStyle(color: AppColors.primary, fontSize: 9, fontWeight: FontWeight.w600)),
+                          Text('$_playerCount', style: const TextStyle(color: AppColors.primary, fontSize: 28, fontWeight: FontWeight.w800, height: 1.1)),
+                          const Text('Leagues', style: TextStyle(color: Colors.white38, fontSize: 9)),
+                          Text('$_leagueCount', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
                         ]),
                       ),
                     ],

@@ -190,7 +190,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: Colors.white),
                 decoration: InputDecoration(
                   hintText:
-                  'rahul.sharma@gmail.com',
+                  'Email or phone number',
                   hintStyle: const TextStyle(
                       color: Colors.white24),
                   filled: true,

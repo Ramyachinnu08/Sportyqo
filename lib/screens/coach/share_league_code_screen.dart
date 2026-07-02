@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
 import 'coach_home_screen.dart';
@@ -9,8 +10,8 @@ class ShareLeagueCodeScreen extends StatelessWidget {
 
   const ShareLeagueCodeScreen({
     super.key,
-    this.leagueName = 'Falcons U16 Premier League',
-    this.leagueCode = 'FALC-16-24',
+    required this.leagueName,
+    required this.leagueCode,
   });
 
   @override
@@ -164,7 +165,7 @@ class ShareLeagueCodeScreen extends StatelessWidget {
                       child: Row(children: [
                         Expanded(
                           child: GestureDetector(
-                            onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Opening WhatsApp...'), backgroundColor: Color(0xFF25D366))),
+                            onTap: () => Share.share('Join my league "$leagueName" on SportyQo! Use code: $leagueCode'),
                             child: Column(children: [
                               Container(
                                 width: 56, height: 56,
@@ -179,7 +180,7 @@ class ShareLeagueCodeScreen extends StatelessWidget {
                         Container(height: 50, width: 1, color: Colors.white10),
                         Expanded(
                           child: GestureDetector(
-                            onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Opening SMS...'), backgroundColor: Color(0xFF1A6BFF))),
+                            onTap: () => Share.share('Join my league "$leagueName" on SportyQo! Use code: $leagueCode'),
                             child: Column(children: [
                               Container(
                                 width: 56, height: 56,

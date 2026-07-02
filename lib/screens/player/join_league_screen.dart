@@ -366,13 +366,13 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
       const SizedBox(height: 6),
       RichText(
         textAlign: TextAlign.center,
-        text: const TextSpan(children: [
-          TextSpan(
+        text: TextSpan(children: [
+          const TextSpan(
               text: 'Select the team you want to join in\n',
               style: TextStyle(color: Colors.white54, fontSize: 13)),
           TextSpan(
-              text: 'Under16 Pro League.',
-              style: TextStyle(
+              text: '${_joinedLeagueName ?? 'your league'}.',
+              style: const TextStyle(
                   color: AppColors.primary,
                   fontSize: 13,
                   fontWeight: FontWeight.w600)),
@@ -401,19 +401,19 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
             const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text('LEAGUE',
+              children: [
+                const Text('LEAGUE',
                     style: TextStyle(
                         color: Colors.white38,
                         fontSize: 10,
                         letterSpacing: 1)),
-                Text('Under16 Pro League',
-                    style: TextStyle(
+                Text(_joinedLeagueName ?? 'Your League',
+                    style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
                         fontSize: 14)),
-                Text('Season 2024-25',
-                    style: TextStyle(color: Colors.white54, fontSize: 12)),
+                Text(_leagueSeason ?? 'Current Season',
+                    style: const TextStyle(color: Colors.white54, fontSize: 12)),
               ],
             ),
           ]),

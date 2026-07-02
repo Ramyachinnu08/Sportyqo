@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sportyqo_api.dart';
+import '../../services/api_client.dart';
 
 class CoachDugoutScreen extends StatefulWidget {
   const CoachDugoutScreen({super.key});
@@ -15,116 +17,76 @@ class _CoachDugoutScreenState extends State<CoachDugoutScreen> {
   final TextEditingController _searchController =
   TextEditingController();
 
-  final List<Map<String, dynamic>> _players = [
-    {
-      'name': 'Rahul Sharma',
-      'role': 'Batsman',
-      'pts': 242,
-      'emoji': '🏏',
-      'following': true,
-      'followers': '3.4K',
-      'age': 19,
-      'matches': 34,
-      'avg': 48.2,
-      'location': 'Bangalore, Karnataka',
-      'team': 'Alpha Warriors',
-      'about': 'Aggressive top-order batsman with great timing and footwork. Loves playing cover drives.',
-    },
-    {
-      'name': 'Arjun Mehta',
-      'role': 'All Rounder',
-      'pts': 180,
-      'emoji': '⚡',
-      'following': true,
-      'followers': '2.1K',
-      'age': 20,
-      'matches': 28,
-      'avg': 36.5,
-      'location': 'Mumbai, Maharashtra',
-      'team': 'Royal Strikers',
-      'about': 'Explosive all-rounder known for match-winning performances under pressure.',
-    },
-    {
-      'name': 'Kabir Sen',
-      'role': 'Bowler',
-      'pts': 156,
-      'emoji': '🎯',
-      'following': false,
-      'followers': '1.8K',
-      'age': 21,
-      'matches': 40,
-      'avg': 22.1,
-      'location': 'Delhi, Delhi',
-      'team': 'Thunder Strikers',
-      'about': 'Lethal fast bowler with natural swing. Can bowl at 140+ kmph consistently.',
-    },
-    {
-      'name': 'Vikram Reddy',
-      'role': 'Wicket Keeper',
-      'pts': 134,
-      'emoji': '🧤',
-      'following': true,
-      'followers': '1.5K',
-      'age': 18,
-      'matches': 22,
-      'avg': 31.4,
-      'location': 'Hyderabad, Telangana',
-      'team': 'Falcons FC',
-      'about': 'Sharp wicket keeper with quick reflexes and solid lower-order batting.',
-    },
-    {
-      'name': 'Aryan Patel',
-      'role': 'Batsman',
-      'pts': 120,
-      'emoji': '🏏',
-      'following': false,
-      'followers': '1.2K',
-      'age': 17,
-      'matches': 18,
-      'avg': 29.8,
-      'location': 'Pune, Maharashtra',
-      'team': 'Rising Stars',
-      'about': 'Young talented batsman with excellent technique and mental strength.',
-    },
-    {
-      'name': 'Rohit Kumar',
-      'role': 'Bowler',
-      'pts': 98,
-      'emoji': '🎯',
-      'following': false,
-      'followers': '980',
-      'age': 22,
-      'matches': 35,
-      'avg': 19.6,
-      'location': 'Chennai, Tamil Nadu',
-      'team': 'Victory XI',
-      'about': 'Crafty spinner who can turn the ball both ways. Dangerous on dry pitches.',
-    },
-  ];
+  // Players in this coach's leagues, from GET /players.
+  List<Map<String, dynamic>> _players = [];
+  bool _loadingPlayers = true;
 
-  final List<Map<String, dynamic>> _updates = [
-    {
-      'name': 'Rahul Sharma',
-      'time': '2h ago',
-      'content': 'Great training session today! 💪 Ready for the match!',
-      'likes': 45,
-      'comments': 12,
-    },
-    {
-      'name': 'Arjun Mehta',
-      'time': '5h ago',
-      'content': 'Worked on my bowling technique today. Getting better! 🏏',
-      'likes': 32,
-      'comments': 8,
-    },
-    {
-      'name': 'Alpha Warriors',
-      'time': '1d ago',
-      'content': 'Team practice completed. Great effort everyone! 🔥',
-      'likes': 78,
-      'comments': 24,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadPlayers();
+    _loadUpdates();
+  }
+
+  Future<void> _loadPlayers() async {
+    try {
+      final data = await SportyQoApi.searchPlayers();
+      if (!mounted) return;
+      setState(() {
+        _players = data.cast<Map<String, dynamic>>().map((r) => {
+              'id': r['id'],
+              'name': r['fullName'] ?? 'Player',
+              'role': r['position'] ?? 'Player',
+              'pts': r['qoScore'] ?? 0,
+              'emoji': r['sportEmoji'] ?? '🏅',
+              'following': r['isFollowing'] == true,
+              'followers': '${r['followers'] ?? 0}',
+              'team': r['teamName'] ?? 'No team yet',
+            }).toList();
+        _loadingPlayers = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingPlayers = false);
+    }
+  }
+
+  static String _relTime(String? iso) {
+    final dt = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return '';
+    final d = DateTime.now().difference(dt);
+    if (d.inMinutes < 1) return 'now';
+    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+    if (d.inHours < 24) return '${d.inHours}h ago';
+    return '${d.inDays}d ago';
+  }
+
+  // Latest message from each dugout thread (real chat activity).
+  List<Map<String, dynamic>> _updates = [];
+  bool _loadingUpdates = true;
+
+  Future<void> _loadUpdates() async {
+    try {
+      final threads = await SportyQoApi.dugoutThreads();
+      if (!mounted) return;
+      setState(() {
+        _updates = threads
+            .cast<Map<String, dynamic>>()
+            .where((t) => t['lastMessage'] != null)
+            .map((t) {
+          final lm = t['lastMessage'] as Map<String, dynamic>;
+          return {
+            'name': lm['senderName'] ?? 'Member',
+            'time': _relTime(lm['at'] as String?),
+            'content': lm['body'] ?? '',
+            'thread': t['title'] ?? 'Dugout',
+          };
+        }).toList();
+        _loadingUpdates = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingUpdates = false);
+    }
+  }
 
   List<Map<String, dynamic>> get _filteredPlayers {
     if (_searchQuery.isEmpty) return _players;
@@ -240,6 +202,15 @@ class _CoachDugoutScreenState extends State<CoachDugoutScreen> {
   }
 
   Widget _buildPlayers(bool isDark) {
+    if (_loadingPlayers) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    if (_players.isEmpty) {
+      return const Center(
+          child: Text('No players in your leagues yet',
+              style: TextStyle(color: Colors.white54, fontSize: 14)));
+    }
     if (_filteredPlayers.isEmpty) {
       return Center(
         child: Column(
@@ -344,6 +315,15 @@ class _CoachDugoutScreenState extends State<CoachDugoutScreen> {
   }
 
   Widget _buildFollowPlayers(bool isDark) {
+    if (_loadingPlayers) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    if (_players.isEmpty) {
+      return const Center(
+          child: Text('No players in your leagues yet',
+              style: TextStyle(color: Colors.white54, fontSize: 14)));
+    }
     final displayList = _searchQuery.isEmpty
         ? _players
         : _players
@@ -427,7 +407,15 @@ class _CoachDugoutScreenState extends State<CoachDugoutScreen> {
                   ),
                   GestureDetector(
                     onTap: () => setLocalState(
-                            () => p['following'] = !p['following']),
+                            () {
+                          p['following'] = !p['following'];
+                          final id = p['id'] as String?;
+                          if (id != null) {
+                            (p['following'] as bool)
+                                ? SportyQoApi.followPlayer(id)
+                                : SportyQoApi.unfollowPlayer(id);
+                          }
+                        }),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 6),
@@ -461,6 +449,15 @@ class _CoachDugoutScreenState extends State<CoachDugoutScreen> {
   }
 
   Widget _buildTeamUpdates(bool isDark) {
+    if (_loadingUpdates) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    if (_updates.isEmpty) {
+      return const Center(
+          child: Text('No team updates yet',
+              style: TextStyle(color: Colors.white54, fontSize: 14)));
+    }
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       itemCount: _updates.length,
@@ -515,26 +512,12 @@ class _CoachDugoutScreenState extends State<CoachDugoutScreen> {
                           height: 1.5)),
                   const SizedBox(height: 10),
                   Row(children: [
-                    GestureDetector(
-                      onTap: () => setLocal(() => liked = !liked),
-                      child: Icon(
-                          liked
-                              ? Icons.favorite
-                              : Icons.favorite_border,
-                          size: 18,
-                          color: Colors.red),
-                    ),
-                    const SizedBox(width: 4),
-                    Text('${u['likes']}',
+                    const Icon(Icons.forum_outlined,
+                        color: Colors.white38, size: 16),
+                    const SizedBox(width: 6),
+                    Text(u['thread'] ?? '',
                         style: const TextStyle(
-                            color: Colors.red, fontSize: 13)),
-                    const SizedBox(width: 16),
-                    const Icon(Icons.chat_bubble_outline,
-                        size: 18, color: AppColors.textGrey),
-                    const SizedBox(width: 4),
-                    Text('${u['comments']}',
-                        style: const TextStyle(
-                            color: AppColors.textGrey, fontSize: 13)),
+                            color: Colors.white38, fontSize: 12)),
                   ]),
                 ],
               ),
@@ -560,11 +543,59 @@ class _PlayerProfileScreen extends StatefulWidget {
 class _PlayerProfileScreenState
     extends State<_PlayerProfileScreen> {
   bool _isFollowing = false;
+  String _about = '';
+  String _location = '—';
+  String _matches = '—';
+  String _rating = '—';
+  String _followers = '0';
 
   @override
   void initState() {
     super.initState();
-    _isFollowing = widget.player['following'] as bool;
+    _isFollowing = widget.player['following'] as bool? ?? false;
+    _followers = widget.player['followers'] as String? ?? '0';
+    _loadDetails();
+  }
+
+  Future<void> _loadDetails() async {
+    final id = widget.player['id'] as String?;
+    if (id == null) return;
+    try {
+      final api = ApiClient.instance;
+      final results = await Future.wait([
+        api.get('/players/$id/profile'),
+        api.get('/players/$id/performance'),
+      ]);
+      if (!mounted) return;
+      final prof = results[0] as Map<String, dynamic>;
+      final perf = results[1] as Map<String, dynamic>;
+      final recent =
+          (perf['recentMatches'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+      final ratings = recent
+          .map((m) => double.tryParse('${m['rating'] ?? ''}'))
+          .whereType<double>()
+          .toList();
+      setState(() {
+        _about = (prof['bio'] as String?) ?? '';
+        _location = (prof['location'] as String?) ?? '—';
+        _followers = '${prof['followers'] ?? _followers}';
+        _matches = '${recent.length}';
+        _rating = ratings.isEmpty
+            ? '—'
+            : (ratings.reduce((a, b) => a + b) / ratings.length)
+                .toStringAsFixed(1);
+      });
+    } catch (_) {}
+  }
+
+  void _toggleFollow() {
+    setState(() => _isFollowing = !_isFollowing);
+    final id = widget.player['id'] as String?;
+    if (id != null) {
+      _isFollowing
+          ? SportyQoApi.followPlayer(id)
+          : SportyQoApi.unfollowPlayer(id);
+    }
   }
 
   @override
@@ -632,7 +663,7 @@ class _PlayerProfileScreenState
                         const Icon(Icons.location_on_outlined,
                             color: Colors.white38, size: 14),
                         const SizedBox(width: 4),
-                        Text(p['location'],
+                        Text(_location,
                             style: const TextStyle(
                                 color: Colors.white38, fontSize: 12)),
                       ]),
@@ -647,8 +678,7 @@ class _PlayerProfileScreenState
                 child: Row(children: [
                   Expanded(
                     child: GestureDetector(
-                      onTap: () =>
-                          setState(() => _isFollowing = !_isFollowing),
+                      onTap: _toggleFollow,
                       child: Container(
                         padding:
                         const EdgeInsets.symmetric(vertical: 12),
@@ -725,15 +755,15 @@ class _PlayerProfileScreenState
                       Container(
                           height: 40, width: 1, color: Colors.white10),
                       _ProfileStat(
-                          label: 'Matches', value: '${p['matches']}'),
+                          label: 'Matches', value: _matches),
                       Container(
                           height: 40, width: 1, color: Colors.white10),
                       _ProfileStat(
-                          label: 'Average', value: '${p['avg']}'),
+                          label: 'Rating', value: _rating),
                       Container(
                           height: 40, width: 1, color: Colors.white10),
                       _ProfileStat(
-                          label: 'Followers', value: p['followers']),
+                          label: 'Followers', value: _followers),
                     ],
                   ),
                 ),
@@ -760,7 +790,7 @@ class _PlayerProfileScreenState
                               fontWeight: FontWeight.w700,
                               fontSize: 16)),
                       const SizedBox(height: 8),
-                      Text(p['about'],
+                      Text(_about.isEmpty ? 'No bio added yet.' : _about,
                           style: const TextStyle(
                               color: Colors.white54,
                               fontSize: 13,
@@ -800,13 +830,9 @@ class _PlayerProfileScreenState
                           label: 'Team',
                           value: p['team']),
                       _DetailRow(
-                          icon: Icons.cake_outlined,
-                          label: 'Age',
-                          value: '${p['age']} years'),
-                      _DetailRow(
                           icon: Icons.location_on_outlined,
                           label: 'Location',
-                          value: p['location']),
+                          value: _location),
                     ],
                   ),
                 ),
@@ -835,79 +861,86 @@ class _MessageScreenState extends State<_MessageScreen> {
   final TextEditingController _msgController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  final List<Map<String, dynamic>> _messages = [
-    {
-      'text': 'Hey Coach! Thanks for connecting.',
-      'isMe': false,
-      'time': '10:00 AM',
-    },
-    {
-      'text': 'Great to have you on board! How was today\'s training?',
-      'isMe': true,
-      'time': '10:02 AM',
-    },
-    {
-      'text': 'It was intense! Worked on batting footwork mostly.',
-      'isMe': false,
-      'time': '10:04 AM',
-    },
-    {
-      'text': 'Perfect. Focus on your stance for tomorrow. 🏏',
-      'isMe': true,
-      'time': '10:05 AM',
-    },
-  ];
+  List<Map<String, dynamic>> _messages = [];
+  String? _threadId;
+  bool _loading = true;
+  bool _sending = false;
 
-  void _sendMessage() {
-    final text = _msgController.text.trim();
-    if (text.isEmpty) return;
-    setState(() {
-      _messages.add({
-        'text': text,
-        'isMe': true,
-        'time': _currentTime(),
-      });
-    });
-    _msgController.clear();
-    Future.delayed(const Duration(milliseconds: 100), () {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    });
+  @override
+  void initState() {
+    super.initState();
+    _openThread();
+  }
 
-    // Simulate reply after 1 second
-    Future.delayed(const Duration(seconds: 1), () {
+  Future<void> _openThread() async {
+    final id = widget.player['id'] as String?;
+    if (id == null) {
+      setState(() => _loading = false);
+      return;
+    }
+    try {
+      _threadId = await SportyQoApi.directThread(id);
+      final msgs = await SportyQoApi.dugoutMessages(_threadId!);
       if (!mounted) return;
       setState(() {
-        _messages.add({
-          'text': _autoReply(text),
-          'isMe': false,
-          'time': _currentTime(),
-        });
+        _messages = msgs.reversed
+            .toList()
+            .cast<Map<String, dynamic>>()
+            .map((m) => {
+                  'text': m['body'] ?? '',
+                  'isMe': m['isMine'] == true,
+                  'time': _fmtTime(m['createdAt'] as String?),
+                })
+            .toList();
+        _loading = false;
       });
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      });
+      _jumpToEnd();
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  static String _fmtTime(String? iso) {
+    final dt = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return '';
+    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '$h:$m ${dt.hour >= 12 ? 'PM' : 'AM'}';
+  }
+
+  void _jumpToEnd() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 
-  String _autoReply(String msg) {
-    final replies = [
-      'Thanks Coach! I\'ll keep that in mind. 💪',
-      'Got it! Will work on it during practice.',
-      'Sure Coach! See you at training tomorrow.',
-      'Understood! I\'ll give my 100%. 🏏',
-      'Thanks for the guidance Coach! 🙏',
-    ];
-    return replies[DateTime.now().second % replies.length];
+  Future<void> _sendMessage() async {
+    final text = _msgController.text.trim();
+    if (text.isEmpty || _threadId == null || _sending) return;
+    setState(() {
+      _sending = true;
+      _messages.add({'text': text, 'isMe': true, 'time': _currentTime()});
+    });
+    _msgController.clear();
+    _jumpToEnd();
+    try {
+      await SportyQoApi.sendDugoutMessage(_threadId!, text);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Message failed to send'),
+          backgroundColor: Colors.redAccent,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 
   String _currentTime() {
@@ -991,7 +1024,11 @@ class _MessageScreenState extends State<_MessageScreen> {
 
             // ── Messages ──
             Expanded(
-              child: ListView.builder(
+              child: _loading
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(color: AppColors.primary))
+                  : ListView.builder(
                 controller: _scrollController,
                 padding: const EdgeInsets.all(16),
                 itemCount: _messages.length,

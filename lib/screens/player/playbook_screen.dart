@@ -11,7 +11,13 @@ class PlaybookScreen extends StatefulWidget {
 
 class _PlaybookScreenState extends State<PlaybookScreen> {
   int _tabIndex = 0;
-  bool _isFollowing = false;
+
+  String? _meName;
+  String? _meSport;
+  String? _meAcademy;
+  String? _meLocation;
+  int? _meQoScore;
+  int? _meRank;
 
   // Content comes from GET /playbook (items shared with the player's
   // teams/leagues by their coach), bucketed by kind per tab.
@@ -42,6 +48,30 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
   void initState() {
     super.initState();
     _load();
+    _loadMe();
+  }
+
+  Future<void> _loadMe() async {
+    try {
+      final me = await SportyQoApi.me();
+      if (!mounted) return;
+      setState(() {
+        _meName = me['fullName'] as String?;
+        _meSport =
+            (me['sport'] as Map<String, dynamic>?)?['name'] as String?;
+        _meAcademy = me['schoolAcademy'] as String?;
+        _meLocation = me['location'] as String?;
+        _meQoScore = (me['qoScore'] as num?)?.toInt();
+      });
+    } catch (_) {}
+    try {
+      final perf = await SportyQoApi.playerPerformance();
+      if (!mounted) return;
+      final rank = perf['ranking'] as Map<String, dynamic>?;
+      setState(() {
+        _meRank = (rank?['position'] as num?)?.toInt();
+      });
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -148,7 +178,7 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
             children: [
               const SizedBox(height: 16),
 
-              // ── Profile Card ──
+              // ── My Profile Card (live from /me + /performance) ──
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Container(
@@ -158,176 +188,104 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: Colors.white10),
                   ),
-                  child: Column(children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Stack(children: [
-                          Container(
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: AppColors.primary, width: 2),
-                              color: const Color(0xFF1A1A1A),
-                            ),
-                            child: const Center(child: Text('👤', style: TextStyle(fontSize: 40))),
-                          ),
-                          Positioned(
-                            top: 0,
-                            left: 0,
-                            child: Container(
-                              width: 22,
-                              height: 22,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1A6BFF),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: const Color(0xFF111111), width: 1.5),
-                              ),
-                              child: const Icon(Icons.check, color: Colors.white, size: 12),
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: Container(
-                              width: 24,
-                              height: 24,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1A1A1A),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white24, width: 1.5),
-                              ),
-                              child: const Icon(Icons.camera_alt, color: Colors.white60, size: 12),
-                            ),
-                          ),
-                        ]),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border:
+                              Border.all(color: AppColors.primary, width: 2),
+                          color: const Color(0xFF1A1A1A),
+                        ),
+                        child: const Center(
+                            child:
+                                Text('👤', style: TextStyle(fontSize: 36))),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(_meName ?? 'Player',
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 4),
+                            if (_meSport != null)
+                              Text(_meSport!,
+                                  style: const TextStyle(
+                                      color: AppColors.primary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 6),
+                            if (_meAcademy != null &&
+                                _meAcademy!.isNotEmpty)
                               Row(children: [
-                                const Text('Aarav Mehta',
-                                    style: TextStyle(
-                                        color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
-                                const SizedBox(width: 6),
-                                const Icon(Icons.verified, color: Color(0xFF1A6BFF), size: 16),
+                                const Icon(Icons.shield_outlined,
+                                    color: Colors.white38, size: 12),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(_meAcademy!,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          color: Colors.white60,
+                                          fontSize: 11)),
+                                ),
                               ]),
-                              const Text('Head Coach',
-                                  style: TextStyle(
-                                      color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 6),
-                              Row(children: const [
-                                Icon(Icons.shield_outlined, color: Colors.white38, size: 12),
-                                SizedBox(width: 4),
-                                Text('Falcons Cricket Academy',
-                                    style: TextStyle(color: Colors.white60, fontSize: 11)),
-                              ]),
+                            if (_meLocation != null &&
+                                _meLocation!.isNotEmpty) ...[
                               const SizedBox(height: 3),
-                              Row(children: const [
-                                Icon(Icons.access_time, color: Colors.white38, size: 12),
-                                SizedBox(width: 4),
-                                Text('6+ Years Experience',
-                                    style: TextStyle(color: Colors.white38, fontSize: 11)),
-                              ]),
-                              const SizedBox(height: 3),
-                              Row(children: const [
-                                Icon(Icons.location_on_outlined, color: Colors.white38, size: 12),
-                                SizedBox(width: 4),
-                                Text('Bangalore, Karnataka',
-                                    style: TextStyle(color: Colors.white38, fontSize: 11)),
-                              ]),
-                              const SizedBox(height: 6),
-                              Row(children: const [
-                                Icon(Icons.check_circle, color: Color(0xFF00C853), size: 13),
-                                SizedBox(width: 4),
-                                Text('Verified Coach',
-                                    style: TextStyle(
-                                        color: Color(0xFF00C853),
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600)),
+                              Row(children: [
+                                const Icon(Icons.location_on_outlined,
+                                    color: Colors.white38, size: 12),
+                                const SizedBox(width: 4),
+                                Text(_meLocation!,
+                                    style: const TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 11)),
                               ]),
                             ],
-                          ),
+                          ],
                         ),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0A0A1A),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.primary.withOpacity(0.4)),
-                          ),
-                          child: Column(children: const [
-                            Text('Coach Score',
-                                style: TextStyle(
-                                    color: AppColors.primary, fontSize: 9, fontWeight: FontWeight.w600)),
-                            Text('92',
-                                style: TextStyle(
-                                    color: AppColors.primary,
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.w800,
-                                    height: 1.1)),
-                            Text('Rank', style: TextStyle(color: Colors.white38, fontSize: 9)),
-                            Text('#3',
-                                style: TextStyle(
-                                    color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
-                            Text('In Karnataka\nCoaches',
-                                style: TextStyle(color: Colors.white38, fontSize: 8),
-                                textAlign: TextAlign.center),
-                          ]),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text('About',
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0A0A1A),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: AppColors.primary.withOpacity(0.4)),
+                        ),
+                        child: Column(children: [
+                          const Text('Qo Score',
                               style: TextStyle(
-                                  color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
-                          SizedBox(height: 6),
-                          Text(
-                              'Building champions on and off the field. Passionate about developing young talent and creating winning teams. 🏏',
-                              style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.5)),
-                        ],
+                                  color: AppColors.primary,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w600)),
+                          Text('${_meQoScore ?? '—'}',
+                              style: const TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.1)),
+                          if (_meRank != null) ...[
+                            const Text('Rank',
+                                style: TextStyle(
+                                    color: Colors.white38, fontSize: 9)),
+                            Text('#$_meRank',
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800)),
+                          ],
+                        ]),
                       ),
-                    ),
-                    const SizedBox(height: 14),
-                    Row(children: [
-                      _StatItem(value: '342', label: 'Players\nTrained'),
-                      _StatItem(value: '48', label: 'Tournaments'),
-                      _StatItem(value: '26', label: 'Awards'),
-                      _StatItem(value: '6+', label: 'Years\nExp'),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () => setState(() => _isFollowing = !_isFollowing),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: _isFollowing ? Colors.white10 : AppColors.primary,
-                            borderRadius: BorderRadius.circular(20),
-                            border: _isFollowing ? Border.all(color: Colors.white24) : null,
-                          ),
-                          child: Text(
-                            _isFollowing ? 'Following ✓' : 'Follow',
-                            style: TextStyle(
-                                color: _isFollowing ? Colors.white70 : Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13),
-                          ),
-                        ),
-                      ),
-                    ]),
-                  ]),
+                    ],
+                  ),
                 ),
               ),
 

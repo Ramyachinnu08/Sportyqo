@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../services/sportyqo_api.dart';
+import '../../services/api_client.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
 import 'coach_home_screen.dart';
@@ -34,16 +37,8 @@ class _CreateLeagueScreenState
     '🐯', '🦊', '🐉', '🌊',
   ];
 
-  final List<TextEditingController> _teamControllers = [
-    TextEditingController(text: 'Falcons FC'),
-    TextEditingController(text: 'Warriors United'),
-    TextEditingController(text: 'Royal Strikers'),
-    TextEditingController(text: 'Blaze Cricket Club'),
-    TextEditingController(text: 'Titans Academy'),
-    TextEditingController(text: 'Rising Stars'),
-    TextEditingController(text: 'Victory XI'),
-    TextEditingController(text: 'Eagle Hearts'),
-  ];
+  final List<TextEditingController> _teamControllers =
+      List.generate(8, (_) => TextEditingController());
 
   final List<String> _locations = [
     'Bangalore, Karnataka',
@@ -55,10 +50,79 @@ class _CreateLeagueScreenState
     'Pune, Maharashtra',
   ];
 
-  @override
-  void initState() {
-    super.initState();
-    _nameController.text = 'Falcons U16 Premier League';
+  bool _creating = false;
+  String? _createdCode;
+  String? _createdLeagueId;
+
+  Future<void> _createLeague() async {
+    final name = _nameController.text.trim();
+    final teamNames = <String>[];
+    final teamEmojis = <String?>[];
+    for (var i = 0; i < _teamsCount && i < _teamControllers.length; i++) {
+      final t = _teamControllers[i].text.trim();
+      if (t.isNotEmpty) {
+        teamNames.add(t);
+        teamEmojis.add(_teamIcons[i]);
+      }
+    }
+    String? error;
+    if (name.length < 3) {
+      error = 'Please enter a league name';
+    } else if (teamNames.length < 2) {
+      error = 'Add at least 2 team names';
+    }
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(error), backgroundColor: Colors.redAccent));
+      return;
+    }
+    setState(() => _creating = true);
+    try {
+      // The league uses the coach's sport (set at registration).
+      String? sportId;
+      try {
+        final me = await SportyQoApi.me();
+        sportId = (me['sport'] as Map<String, dynamic>?)?['id'] as String?;
+      } catch (_) {}
+      if (sportId == null) {
+        final sports = await SportyQoApi.sports();
+        if (sports.isNotEmpty) {
+          sportId = (sports.first as Map<String, dynamic>)['id'] as String?;
+        }
+      }
+      if (sportId == null) {
+        throw ApiException(0, 'BAD_REQUEST', 'No sport configured');
+      }
+      final league = await SportyQoApi.createLeague(
+        name: name,
+        location: _selectedLocation,
+        gender: _selectedGender,
+        sportId: sportId,
+        iconEmoji: _selectedLeagueIcon,
+        teams: [
+          for (var i = 0; i < teamNames.length; i++)
+            {
+              'name': teamNames[i],
+              if (teamEmojis[i] != null) 'iconEmoji': teamEmojis[i]!,
+            }
+        ],
+      );
+      if (!mounted) return;
+      setState(() {
+        _createdCode = league['leagueCode'] as String?;
+        _createdLeagueId = league['id'] as String?;
+        _step = 1;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      final detail = (e.details != null && e.details!.isNotEmpty)
+          ? (e.details!.first['message'] ?? e.message)
+          : e.message;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$detail'), backgroundColor: Colors.redAccent));
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
   }
 
   void _showLeagueIconPicker() {
@@ -683,10 +747,16 @@ class _CreateLeagueScreenState
           child: SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => setState(() => _step = 1),
-              icon: const Icon(Icons.arrow_forward,
-                  color: Colors.white, size: 18),
-              label: const Text('Continue',
+              onPressed: _creating ? null : _createLeague,
+              icon: _creating
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.arrow_forward,
+                      color: Colors.white, size: 18),
+              label: Text(_creating ? 'Creating…' : 'Create League',
                   style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
@@ -808,8 +878,8 @@ class _CreateLeagueScreenState
                               fontWeight: FontWeight.w600)),
                       GestureDetector(
                         onTap: () {
-                          Clipboard.setData(const ClipboardData(
-                              text: 'FALC-16-24'));
+                          Clipboard.setData(ClipboardData(
+                              text: _createdCode ?? ''));
                           ScaffoldMessenger.of(context)
                               .showSnackBar(const SnackBar(
                             content: Text('Code Copied! 📋'),
@@ -837,9 +907,9 @@ class _CreateLeagueScreenState
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.white12),
                   ),
-                  child: const Center(
-                    child: Text('FALC-16-24',
-                        style: TextStyle(
+                  child: Center(
+                    child: Text(_createdCode ?? '——————',
+                        style: const TextStyle(
                             color: Colors.white,
                             fontSize: 32,
                             fontWeight: FontWeight.w800,
@@ -901,13 +971,8 @@ class _CreateLeagueScreenState
                   child: Row(children: [
                     Expanded(
                       child: GestureDetector(
-                        onTap: () =>
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Opening WhatsApp...'),
-                                backgroundColor: Color(0xFF25D366),
-                              ),
-                            ),
+                        onTap: () => Share.share(
+                            'Join my league "${_nameController.text.trim()}" on SportyQo! Use code: ${_createdCode ?? ''}'),
                         child: Column(children: [
                           Container(
                             width: 56,
@@ -933,13 +998,8 @@ class _CreateLeagueScreenState
                         height: 50, width: 1, color: Colors.white10),
                     Expanded(
                       child: GestureDetector(
-                        onTap: () =>
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Opening Messages...'),
-                                backgroundColor: Color(0xFF1A6BFF),
-                              ),
-                            ),
+                        onTap: () => Share.share(
+                            'Join my league "${_nameController.text.trim()}" on SportyQo! Use code: ${_createdCode ?? ''}'),
                         child: Column(children: [
                           Container(
                             width: 56,

@@ -441,6 +441,7 @@ class _HomeTabState extends State<_HomeTab> {
                               leagueName: _activeLeague!,
                               teamName: _activeTeam!,
                               sport: widget.selectedSport,
+                              leagueId: _liveLeagueId,
                             )));
                     if (exited == true) {
                       setState(() {
@@ -1353,16 +1354,65 @@ class _AllMatchesScreenState extends State<_AllMatchesScreen> {
 
 // ── League Detail Screen ──────────────────────────────────────────────
 
-class _LeagueDetailScreen extends StatelessWidget {
+class _LeagueDetailScreen extends StatefulWidget {
   final String leagueName;
   final String teamName;
   final String sport;
+  final String? leagueId;
 
   const _LeagueDetailScreen({
     required this.leagueName,
     required this.teamName,
     required this.sport,
+    this.leagueId,
   });
+
+  @override
+  State<_LeagueDetailScreen> createState() => _LeagueDetailScreenState();
+}
+
+class _LeagueDetailScreenState extends State<_LeagueDetailScreen> {
+  String get leagueName => widget.leagueName;
+  String get teamName => widget.teamName;
+  String get sport => widget.sport;
+
+  List<Map<String, dynamic>> _standings = [];
+  bool _loadingStandings = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStandings();
+  }
+
+  Map<String, dynamic>? get _myRow {
+    for (final r in _standings) {
+      if (r['name'] == teamName) return r;
+    }
+    return null;
+  }
+
+  String get _myRankLabel =>
+      _myRow == null ? '—' : '#${_myRow!['rank']}';
+  String get _myPointsLabel =>
+      _myRow == null ? '—' : '${_myRow!['points']}';
+
+  Future<void> _loadStandings() async {
+    if (widget.leagueId == null) {
+      setState(() => _loadingStandings = false);
+      return;
+    }
+    try {
+      final data = await SportyQoApi.leagueStandings(widget.leagueId!);
+      if (!mounted) return;
+      setState(() {
+        _standings = data.cast<Map<String, dynamic>>();
+        _loadingStandings = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingStandings = false);
+    }
+  }
 
   void _confirmExit(BuildContext context) {
     showDialog(
@@ -1472,13 +1522,20 @@ class _LeagueDetailScreen extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          _LeagueStat(label: 'Teams', value: '8'),
+                          _LeagueStat(
+                              label: 'Teams',
+                              value: '${_standings.length}'),
                           Container(height: 40, width: 1, color: Colors.white10),
-                          _LeagueStat(label: 'Matches', value: '12'),
+                          _LeagueStat(
+                              label: 'Matches',
+                              value:
+                                  '${_standings.fold<int>(0, (a, r) => a + ((r['played'] as num?)?.toInt() ?? 0)) ~/ 2}'),
                           Container(height: 40, width: 1, color: Colors.white10),
-                          _LeagueStat(label: 'My Rank', value: '#3'),
+                          _LeagueStat(
+                              label: 'My Rank', value: _myRankLabel),
                           Container(height: 40, width: 1, color: Colors.white10),
-                          _LeagueStat(label: 'Points', value: '24'),
+                          _LeagueStat(
+                              label: 'Points', value: _myPointsLabel),
                         ],
                       ),
                     ]),
@@ -1551,12 +1608,27 @@ class _LeagueDetailScreen extends StatelessWidget {
                                 fontWeight: FontWeight.w700,
                                 fontSize: 15)),
                         const SizedBox(height: 12),
-                        _StandingRow(
-                            pos: '1', team: 'Alpha Warriors', pts: '14', isMe: false),
-                        _StandingRow(
-                            pos: '2', team: 'Warriors United', pts: '12', isMe: false),
-                        _StandingRow(pos: '3', team: teamName, pts: '10', isMe: true),
-                        _StandingRow(pos: '4', team: 'Blaze Club', pts: '8', isMe: false),
+                        if (_loadingStandings)
+                          const Center(
+                              child: Padding(
+                            padding: EdgeInsets.all(12),
+                            child: CircularProgressIndicator(
+                                color: AppColors.primary, strokeWidth: 2),
+                          ))
+                        else if (_standings.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: Text('No completed matches yet',
+                                style: TextStyle(
+                                    color: Colors.white54, fontSize: 13)),
+                          )
+                        else
+                          ..._standings.map((r) => _StandingRow(
+                                pos: '${r['rank']}',
+                                team: r['name'] as String? ?? '',
+                                pts: '${r['points']}',
+                                isMe: r['name'] == teamName,
+                              )),
                       ],
                     ),
                   ),

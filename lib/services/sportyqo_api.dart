@@ -137,6 +137,21 @@ class SportyQoApi {
         query: q.isEmpty ? null : {'q': q}) as List<dynamic>;
   }
 
+  static Future<void> followPlayer(String playerId) async {
+    await _api.post('/players/$playerId/follow');
+  }
+
+  static Future<void> unfollowPlayer(String playerId) async {
+    await _api.delete('/players/$playerId/follow');
+  }
+
+  /// Find-or-create a 1:1 chat thread with another user. Returns threadId.
+  static Future<String> directThread(String userId) async {
+    final data = await _api.post('/dugout/direct', body: {'userId': userId})
+        as Map<String, dynamic>;
+    return data['threadId'] as String;
+  }
+
   static Future<List<dynamic>> coachCertifications() async {
     return await _api.get('/coach/certifications') as List<dynamic>;
   }
