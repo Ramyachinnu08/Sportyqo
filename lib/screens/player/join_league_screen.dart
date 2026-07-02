@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sportyqo_api.dart';
+import '../../services/api_client.dart';
 
 class JoinLeagueScreen extends StatefulWidget {
   final Function(String teamName, String leagueName)? onJoined;
@@ -14,6 +16,29 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
   final List<String> _code = ['', '', '', '', '', ''];
   int _activeBox = 0;
   String? _selectedTeam;
+  bool _verifying = false;
+  String? _joinedLeagueName;
+
+  Future<void> _verifyAndJoin() async {
+    setState(() => _verifying = true);
+    try {
+      final result = await SportyQoApi.joinLeague(_code.join());
+      if (!mounted) return;
+      _joinedLeagueName =
+          (result['league'] as Map<String, dynamic>?)?['name'] as String?;
+      setState(() => _step = 1);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.code == 'CONFLICT'
+            ? 'You have already joined this league'
+            : e.message),
+        backgroundColor: Colors.redAccent,
+      ));
+    } finally {
+      if (mounted) setState(() => _verifying = false);
+    }
+  }
 
   final List<Map<String, dynamic>> _teams = [
     {
@@ -235,8 +260,8 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
           child: SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _code.every((c) => c.isNotEmpty)
-                  ? () => setState(() => _step = 1)
+              onPressed: (_code.every((c) => c.isNotEmpty) && !_verifying)
+                  ? _verifyAndJoin
                   : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
@@ -682,7 +707,7 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
                   if (widget.onJoined != null && _selectedTeam != null) {
                     widget.onJoined!(
                       _selectedTeam!,
-                      'Under16 Pro League',
+                      _joinedLeagueName ?? 'Your League',
                     );
                   }
                   Navigator.pop(context);

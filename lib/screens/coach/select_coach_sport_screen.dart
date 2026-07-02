@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../services/auth_service.dart';
+import '../../services/api_client.dart';
 import 'coach_home_screen.dart';
 
 class SelectCoachSportScreen extends StatefulWidget {
@@ -202,7 +204,35 @@ class _SelectCoachSportScreenState extends State<SelectCoachSportScreen> {
                 child: ElevatedButton(
                   onPressed: _selectedSport == null
                       ? null
-                      : () {
+                      : () async {
+                    final draft = RegistrationDraft.instance;
+                    // If the user came through Create Account, register now;
+                    // if they're already logged in, just continue.
+                    if (draft.fullName.isNotEmpty &&
+                        draft.password.isNotEmpty) {
+                      try {
+                        draft.sportName = _selectedSport;
+                        final coachCode =
+                            await AuthService.registerCoachFromDraft();
+                        draft.reset();
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content:
+                              Text('Account created! Coach code: $coachCode'),
+                          backgroundColor: const Color(0xFF00C853),
+                        ));
+                      } on ApiException catch (e) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(e.code == 'CONFLICT'
+                              ? 'An account with this email/phone already exists'
+                              : e.message),
+                          backgroundColor: Colors.redAccent,
+                        ));
+                        return;
+                      }
+                    }
+                    if (!context.mounted) return;
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'dart:math';
 import 'player_id_ready_screen.dart';
+import '../../services/auth_service.dart';
+import '../../services/api_client.dart';
 
 class GeneratingIdScreen extends StatefulWidget {
   final String selectedSport;
@@ -14,7 +15,6 @@ class GeneratingIdScreen extends StatefulWidget {
 class _GeneratingIdScreenState extends State<GeneratingIdScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _spinController;
-  late String _generatedId;
 
   @override
   void initState() {
@@ -25,26 +25,39 @@ class _GeneratingIdScreenState extends State<GeneratingIdScreen>
       duration: const Duration(seconds: 2),
     )..repeat();
 
-    _generatedId = _generatePlayerId();
-
-    Timer(const Duration(milliseconds: 2800), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => PlayerIdReadyScreen(
-              playerId: _generatedId,
-              selectedSport: widget.selectedSport,
-            ),
-          ),
-        );
-      }
-    });
+    _register();
   }
 
-  String _generatePlayerId() {
-    final random = Random();
-    final randomNumber = (random.nextInt(900000) + 100000);
-    return 'SQP2026$randomNumber';
+  Future<void> _register() async {
+    // Keep the animation visible for at least a moment even on fast networks.
+    final minDelay = Future.delayed(const Duration(milliseconds: 1500));
+    try {
+      RegistrationDraft.instance.sportName = widget.selectedSport;
+      final playerId = await AuthService.registerPlayerFromDraft();
+      await minDelay;
+      if (!mounted) return;
+      RegistrationDraft.instance.reset();
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => PlayerIdReadyScreen(
+            playerId: playerId,
+            selectedSport: widget.selectedSport,
+          ),
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      final detail = (e.details != null && e.details!.isNotEmpty)
+          ? (e.details!.first['message'] ?? e.message)
+          : e.message;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.code == 'CONFLICT'
+            ? 'An account with this email/phone already exists'
+            : '$detail'),
+        backgroundColor: Colors.redAccent,
+      ));
+      Navigator.of(context).pop(); // back to sport selection to retry
+    }
   }
 
   @override

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../player/home_screen.dart';
 import '../coach/coach_home_screen.dart';
+import '../../services/auth_service.dart';
+import '../../services/api_client.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,6 +16,49 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _isPlayer = true;
+  bool _loading = false;
+  final _identifierCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _identifierCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login() async {
+    final identifier = _identifierCtrl.text.trim();
+    final password = _passwordCtrl.text;
+    if (identifier.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Enter your email/phone and password'),
+        backgroundColor: Colors.redAccent,
+      ));
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final role = await AuthService.login(identifier, password);
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+            builder: (_) => role == 'COACH'
+                ? const CoachHomeScreen()
+                : const HomeScreen()),
+        (route) => false,
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.message),
+        backgroundColor: Colors.redAccent,
+      ));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -138,6 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       fontSize: 13)),
               const SizedBox(height: 8),
               TextField(
+                controller: _identifierCtrl,
                 keyboardType:
                 TextInputType.emailAddress,
                 style: const TextStyle(
@@ -187,6 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       fontSize: 13)),
               const SizedBox(height: 8),
               TextField(
+                controller: _passwordCtrl,
                 obscureText: _obscurePassword,
                 style: const TextStyle(
                     color: Colors.white),
@@ -263,25 +310,7 @@ class _LoginScreenState extends State<LoginScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () {
-                    if (_isPlayer) {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) =>
-                            const HomeScreen()),
-                            (route) => false,
-                      );
-                    } else {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) =>
-                            const CoachHomeScreen()),
-                            (route) => false,
-                      );
-                    }
-                  },
+                  onPressed: _loading ? null : _login,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _isPlayer
                         ? AppColors.primary
@@ -295,11 +324,18 @@ class _LoginScreenState extends State<LoginScreen> {
                         BorderRadius.circular(
                             14)),
                   ),
-                  child: const Text('Login',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight:
-                          FontWeight.w700)),
+                  child: _loading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white))
+                      : const Text('Login',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight:
+                              FontWeight.w700)),
                 ),
               ),
 

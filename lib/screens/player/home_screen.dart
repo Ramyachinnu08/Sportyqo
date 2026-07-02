@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sportyqo_api.dart';
 import 'dugout_screen.dart';
 import 'playbook_screen.dart';
 import 'performance_screen.dart';
@@ -93,6 +94,41 @@ class _HomeTabState extends State<_HomeTab> {
   String? _activeLeague = 'U16 Division • Division 1';
   String? _activeTeam = 'Falcons FC';
 
+  // Live data from GET /players/:id/home (falls back to mocks while loading
+  // or if the backend is unreachable).
+  String? _firstName;
+  String? _livePlayerCode;
+  int? _liveQoScore;
+  int _unreadCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHome();
+  }
+
+  Future<void> _loadHome() async {
+    try {
+      final data = await SportyQoApi.playerHome();
+      if (!mounted) return;
+      final player = data['player'] as Map<String, dynamic>?;
+      final league = data['activeLeague'] as Map<String, dynamic>?;
+      final team = league?['team'] as Map<String, dynamic>?;
+      final notif = data['notifications'] as Map<String, dynamic>?;
+      setState(() {
+        _firstName =
+            (player?['fullName'] as String?)?.split(' ').first;
+        _livePlayerCode = player?['playerId'] as String?;
+        _liveQoScore = player?['qoScore'] as int?;
+        _activeLeague = league?['name'] as String?;
+        _activeTeam = team?['name'] as String?;
+        _unreadCount = (notif?['unreadCount'] as int?) ?? 0;
+      });
+    } catch (_) {
+      // Not logged in / offline: keep the existing mock visuals.
+    }
+  }
+
   String _getSportRole(String sport) {
     switch (sport) {
       case 'Football':
@@ -179,21 +215,22 @@ class _HomeTabState extends State<_HomeTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(children: const [
-                          Text('Alex',
-                              style: TextStyle(
+                        Row(children: [
+                          Text(_firstName ?? 'Alex',
+                              style: const TextStyle(
                                   fontSize: 30,
                                   fontWeight: FontWeight.w800,
                                   color: Colors.white)),
-                          Text('.',
+                          const Text('.',
                               style: TextStyle(
                                   fontSize: 30,
                                   fontWeight: FontWeight.w800,
                                   color: AppColors.primary)),
                         ]),
-                        if (widget.playerId != null) ...[
+                        if (_livePlayerCode != null ||
+                            widget.playerId != null) ...[
                           const SizedBox(height: 4),
-                          Text(widget.playerId!,
+                          Text(_livePlayerCode ?? widget.playerId!,
                               style: const TextStyle(
                                   color: Color(0xFF00C853),
                                   fontSize: 13,
@@ -229,19 +266,20 @@ class _HomeTabState extends State<_HomeTab> {
                         child: const Icon(Icons.notifications_outlined,
                             color: Colors.white, size: 22),
                       ),
-                      Positioned(
-                        top: 6,
-                        right: 6,
-                        child: Container(
-                          width: 9,
-                          height: 9,
-                          decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                  color: const Color(0xFF0A0A1A), width: 1.5)),
+                      if (_unreadCount > 0)
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: Container(
+                            width: 9,
+                            height: 9,
+                            decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                    color: const Color(0xFF0A0A1A), width: 1.5)),
+                          ),
                         ),
-                      ),
                     ]),
                   ),
 
@@ -301,8 +339,8 @@ class _HomeTabState extends State<_HomeTab> {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            const Text('720',
-                                style: TextStyle(
+                            Text('${_liveQoScore ?? 720}',
+                                style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 54,
                                     fontWeight: FontWeight.w800,

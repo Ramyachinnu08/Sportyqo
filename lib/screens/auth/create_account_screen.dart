@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/auth_service.dart';
 import 'create_profile_screen.dart';
 import 'login_screen.dart';
 
@@ -18,6 +19,19 @@ class _CreateAccountScreenState
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
   bool _agreeToTerms = false;
+  final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +83,7 @@ class _CreateAccountScreenState
                 hint: 'Full Name',
                 icon: Icons.person_outline,
                 isDark: isDark,
+                controller: _nameCtrl,
               ),
               const SizedBox(height: 14),
               _buildTextField(
@@ -76,6 +91,7 @@ class _CreateAccountScreenState
                 icon: Icons.phone_outlined,
                 isDark: isDark,
                 keyboardType: TextInputType.phone,
+                controller: _phoneCtrl,
               ),
               const SizedBox(height: 14),
               _buildTextField(
@@ -84,6 +100,7 @@ class _CreateAccountScreenState
                 isDark: isDark,
                 keyboardType:
                 TextInputType.emailAddress,
+                controller: _emailCtrl,
               ),
               const SizedBox(height: 14),
               if (!widget.isPlayer) ...[
@@ -98,6 +115,7 @@ class _CreateAccountScreenState
                 hint: 'Password',
                 icon: Icons.lock_outline,
                 isDark: isDark,
+                controller: _passwordCtrl,
                 obscureText: _obscurePassword,
                 suffixIcon: IconButton(
                   icon: Icon(
@@ -186,6 +204,31 @@ class _CreateAccountScreenState
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
+                    final name = _nameCtrl.text.trim();
+                    final email = _emailCtrl.text.trim();
+                    final phone = _phoneCtrl.text.trim();
+                    final password = _passwordCtrl.text;
+                    String? error;
+                    if (name.length < 2) {
+                      error = 'Please enter your full name';
+                    } else if (email.isEmpty && phone.isEmpty) {
+                      error = 'Enter an email or phone number';
+                    } else if (password.length < 8) {
+                      error = 'Password must be at least 8 characters';
+                    }
+                    if (error != null) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(error),
+                        backgroundColor: Colors.redAccent,
+                      ));
+                      return;
+                    }
+                    final draft = RegistrationDraft.instance;
+                    draft.fullName = name;
+                    draft.email = email;
+                    draft.phone = phone;
+                    draft.password = password;
+                    draft.isPlayer = widget.isPlayer;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -558,8 +601,10 @@ class _CreateAccountScreenState
     TextInputType? keyboardType,
     bool obscureText = false,
     Widget? suffixIcon,
+    TextEditingController? controller,
   }) {
     return TextField(
+      controller: controller,
       keyboardType: keyboardType,
       obscureText: obscureText,
       style: TextStyle(

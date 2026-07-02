@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sportyqo_api.dart';
 import 'coach_dugout_screen.dart';
 import 'coach_playbook_screen.dart';
 import 'coach_performance_screen.dart';
@@ -79,8 +80,41 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
 
 // ── Coach Home Tab ────────────────────────────────────────────────────
 
-class _CoachHomeTab extends StatelessWidget {
+class _CoachHomeTab extends StatefulWidget {
   const _CoachHomeTab();
+
+  @override
+  State<_CoachHomeTab> createState() => _CoachHomeTabState();
+}
+
+class _CoachHomeTabState extends State<_CoachHomeTab> {
+  // Live data from GET /coach/dashboard (mock text remains as fallback).
+  String? _coachName;
+  String? _coachTitle;
+  String? _academy;
+  bool _isVerified = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboard();
+  }
+
+  Future<void> _loadDashboard() async {
+    try {
+      final data = await SportyQoApi.coachDashboard();
+      if (!mounted) return;
+      final coach = data['coach'] as Map<String, dynamic>?;
+      setState(() {
+        _coachName = coach?['fullName'] as String?;
+        _coachTitle = coach?['title'] as String?;
+        _academy = coach?['academy'] as String?;
+        _isVerified = (coach?['isVerified'] as bool?) ?? false;
+      });
+    } catch (_) {
+      // Offline / not logged in: keep mock visuals.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -199,34 +233,38 @@ class _CoachHomeTab extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(children: [
-                      const Text('Coach Suneeth',
-                          style: TextStyle(
+                      Text(_coachName ?? 'Coach Suneeth',
+                          style: const TextStyle(
                               color: Colors.white,
                               fontSize: 26,
                               fontWeight: FontWeight.w800)),
                       const SizedBox(width: 8),
-                      Container(
-                        width: 24,
-                        height: 24,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF00C853),
-                          shape: BoxShape.circle,
+                      if (_isVerified)
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF00C853),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.check,
+                              color: Colors.white, size: 14),
                         ),
-                        child: const Icon(Icons.check,
-                            color: Colors.white, size: 14),
-                      ),
                     ]),
                     const SizedBox(height: 4),
-                    Row(children: const [
-                      Text('Head Coach',
-                          style: TextStyle(
+                    Row(children: [
+                      Text(_coachTitle ?? 'Head Coach',
+                          style: const TextStyle(
                               color: Colors.white54, fontSize: 14)),
-                      Text(' • ',
+                      const Text(' • ',
                           style: TextStyle(
                               color: Colors.white24, fontSize: 14)),
-                      Text('Falcons Cricket Academy',
-                          style: TextStyle(
-                              color: Colors.white54, fontSize: 14)),
+                      Flexible(
+                        child: Text(_academy ?? 'Falcons Cricket Academy',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 14)),
+                      ),
                     ]),
                   ],
                 ),
