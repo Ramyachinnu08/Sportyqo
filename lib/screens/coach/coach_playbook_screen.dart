@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sportyqo_api.dart';
 
 class CoachPlaybookScreen extends StatefulWidget {
   const CoachPlaybookScreen({super.key});
@@ -12,49 +13,100 @@ class CoachPlaybookScreen extends StatefulWidget {
 class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
   int _tabIndex = 0;
 
-  final List<Map<String, dynamic>> _trainingContent = [
-    {'title': 'Batting Practice Session', 'date': '12 May 2025', 'photos': 12, 'emoji': '🏏', 'color': const Color(0xFF1A2A1A)},
-    {'title': 'Bowling Drills', 'date': '10 May 2025', 'photos': 8, 'emoji': '🎯', 'color': const Color(0xFF1A1A2A)},
-    {'title': 'Strength & Conditioning', 'date': '08 May 2025', 'photos': 6, 'emoji': '💪', 'color': const Color(0xFF2A1A1A)},
-    {'title': 'Match Preparation', 'date': '05 May 2025', 'photos': 10, 'emoji': '📋', 'color': const Color(0xFF1A2A2A)},
-  ];
+  // Live data
+  Map<String, dynamic>? _me;
+  int _playerCount = 0;
+  int _leagueCount = 0;
+  int _matchesCompleted = 0;
+  final Map<String, List<Map<String, dynamic>>> _byKind = {
+    'DRILL': [], 'STRATEGY': [], 'VIDEO': [], 'NOTE': [],
+  };
+  List<Map<String, dynamic>> _recommendedPlayers = [];
+  bool _loading = true;
 
-  final List<Map<String, dynamic>> _teamsContent = [
-    {'title': 'Falcons U16 Team', 'date': '01 May 2025', 'photos': 15, 'emoji': '🦅', 'color': const Color(0xFF1A1A3A)},
-    {'title': 'Academy Squad 2025', 'date': '28 Apr 2025', 'photos': 20, 'emoji': '👥', 'color': const Color(0xFF2A1A2A)},
-    {'title': 'Under16 Tournament', 'date': '25 Apr 2025', 'photos': 18, 'emoji': '🏆', 'color': const Color(0xFF1A3A1A)},
-    {'title': 'Practice Match Day', 'date': '22 Apr 2025', 'photos': 9, 'emoji': '🏟️', 'color': const Color(0xFF2A2A1A)},
-  ];
+  static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  final List<Map<String, dynamic>> _achievementsContent = [
-    {'title': 'Best Coach Award 2024', 'date': '15 Mar 2025', 'photos': 5, 'emoji': '🏅', 'color': const Color(0xFF2A1A0A)},
-    {'title': 'State Championship Win', 'date': '10 Mar 2025', 'photos': 22, 'emoji': '🥇', 'color': const Color(0xFF1A2A0A)},
-    {'title': 'BCCI Certification', 'date': '01 Jan 2025', 'photos': 4, 'emoji': '🎓', 'color': const Color(0xFF0A1A2A)},
-    {'title': 'Tournament Trophy', 'date': '20 Dec 2024', 'photos': 8, 'emoji': '🏆', 'color': const Color(0xFF1A0A2A)},
-  ];
-
-  final List<Map<String, dynamic>> _eventsContent = [
-    {'title': 'Annual Sports Day', 'date': '20 May 2025', 'photos': 30, 'emoji': '🎪', 'color': const Color(0xFF2A1A1A)},
-    {'title': 'Coaching Workshop', 'date': '18 May 2025', 'photos': 12, 'emoji': '📚', 'color': const Color(0xFF1A1A2A)},
-    {'title': 'Inter Academy Match', 'date': '15 May 2025', 'photos': 25, 'emoji': '⚡', 'color': const Color(0xFF1A2A1A)},
-    {'title': 'Award Ceremony', 'date': '10 May 2025', 'photos': 16, 'emoji': '🎖️', 'color': const Color(0xFF2A2A1A)},
-  ];
-
-  List<Map<String, dynamic>> get _currentContent {
-    switch (_tabIndex) {
-      case 0: return _trainingContent;
-      case 1: return _teamsContent;
-      case 2: return _achievementsContent;
-      case 3: return _eventsContent;
-      default: return _trainingContent;
+  static ({String emoji, Color color}) _kindStyle(String kind) {
+    switch (kind) {
+      case 'VIDEO':
+        return (emoji: '🎬', color: const Color(0xFF1A1A3A));
+      case 'DRILL':
+        return (emoji: '🏃', color: const Color(0xFF1A2A1A));
+      case 'STRATEGY':
+        return (emoji: '🧠', color: const Color(0xFF2A1A2A));
+      default:
+        return (emoji: '📝', color: const Color(0xFF2A2A1A));
     }
   }
 
-  final List<Map<String, dynamic>> _recommendedPlayers = [
-    {'name': 'Sai Kishore', 'role': 'Spinner', 'emoji': '🎯', 'pts': 210},
-    {'name': 'Priya Singh', 'role': 'Batsman', 'emoji': '🏏', 'pts': 195},
-    {'name': 'Dev Anand', 'role': 'All Rounder', 'emoji': '⚡', 'pts': 178},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final results = await Future.wait([
+        SportyQoApi.me(),
+        SportyQoApi.coachDashboard(),
+        SportyQoApi.coachPerformance(),
+        SportyQoApi.playbook(),
+        SportyQoApi.searchPlayers(),
+      ]);
+      if (!mounted) return;
+      final me = results[0] as Map<String, dynamic>;
+      final dash = results[1] as Map<String, dynamic>;
+      final perf = results[2] as Map<String, dynamic>;
+      final items =
+          (results[3] as List<dynamic>).cast<Map<String, dynamic>>();
+      final players =
+          (results[4] as List<dynamic>).cast<Map<String, dynamic>>();
+
+      final counts = dash['counts'] as Map<String, dynamic>? ?? const {};
+      final totals = perf['totals'] as Map<String, dynamic>? ?? const {};
+      setState(() {
+        _me = me;
+        _playerCount = (counts['players'] as num?)?.toInt() ?? 0;
+        _leagueCount = (counts['leagues'] as num?)?.toInt() ?? 0;
+        _matchesCompleted =
+            (totals['matchesCompleted'] as num?)?.toInt() ?? 0;
+        for (final k in _byKind.keys) {
+          _byKind[k] = [];
+        }
+        for (final raw in items) {
+          final kind = (raw['kind'] as String? ?? 'NOTE').toUpperCase();
+          final st = _kindStyle(kind);
+          final dt =
+              DateTime.tryParse(raw['createdAt'] as String? ?? '')?.toLocal();
+          (_byKind[kind] ?? _byKind['NOTE']!).add({
+            'title': raw['title'] ?? '',
+            'subtitle': raw['description'] ?? '',
+            'date': dt == null
+                ? ''
+                : '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}',
+            'kindLabel': kind[0] + kind.substring(1).toLowerCase(),
+            'emoji': st.emoji,
+            'color': st.color,
+          });
+        }
+        final sorted = [...players]..sort((a, b) =>
+            ((b['qoScore'] as num?) ?? 0).compareTo((a['qoScore'] as num?) ?? 0));
+        _recommendedPlayers = sorted
+            .take(3)
+            .map((r) => {
+                  'name': r['fullName'] ?? '',
+                  'role': r['teamName'] ?? 'No team yet',
+                  'emoji': r['sportEmoji'] ?? '🏅',
+                  'pts': (r['qoScore'] as num?)?.toInt() ?? 0,
+                })
+            .toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -119,35 +171,43 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(children: [
-                              const Text('Rahul Sharma', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
+                              Text(_me?['fullName'] as String? ?? 'Coach', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
                               const SizedBox(width: 6),
-                              const Icon(Icons.verified, color: Color(0xFF1A6BFF), size: 16),
+                              if (_me?['isVerifiedCoach'] == true)
+                                const Icon(Icons.verified, color: Color(0xFF1A6BFF), size: 16),
                             ]),
-                            const Text('Head Coach', style: TextStyle(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.w600)),
+                            Text(_me?['title'] as String? ?? 'Coach', style: const TextStyle(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.w600)),
                             const SizedBox(height: 6),
-                            Row(children: const [
-                              Icon(Icons.shield_outlined, color: Colors.white38, size: 12),
-                              SizedBox(width: 4),
-                              Text('Falcons Cricket Academy', style: TextStyle(color: Colors.white60, fontSize: 11)),
-                            ]),
+                            if ((_me?['academy'] as String?)?.isNotEmpty ==
+                                true)
+                              Row(children: [
+                                const Icon(Icons.shield_outlined, color: Colors.white38, size: 12),
+                                const SizedBox(width: 4),
+                                Text(_me!['academy'] as String, style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                              ]),
                             const SizedBox(height: 3),
-                            Row(children: const [
-                              Icon(Icons.access_time, color: Colors.white38, size: 12),
-                              SizedBox(width: 4),
-                              Text('6+ Years Experience', style: TextStyle(color: Colors.white38, fontSize: 11)),
-                            ]),
+                            if ((_me?['yearsExperience'] as num?) != null &&
+                                (_me!['yearsExperience'] as num) > 0)
+                              Row(children: [
+                                const Icon(Icons.access_time, color: Colors.white38, size: 12),
+                                const SizedBox(width: 4),
+                                Text('${_me!['yearsExperience']} Years Experience', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                              ]),
                             const SizedBox(height: 3),
-                            Row(children: const [
-                              Icon(Icons.location_on_outlined, color: Colors.white38, size: 12),
-                              SizedBox(width: 4),
-                              Text('Bangalore, Karnataka', style: TextStyle(color: Colors.white38, fontSize: 11)),
-                            ]),
+                            if ((_me?['location'] as String?)?.isNotEmpty ==
+                                true)
+                              Row(children: [
+                                const Icon(Icons.location_on_outlined, color: Colors.white38, size: 12),
+                                const SizedBox(width: 4),
+                                Text(_me!['location'] as String, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                              ]),
                             const SizedBox(height: 3),
-                            Row(children: const [
-                              Icon(Icons.workspace_premium_outlined, color: Colors.white38, size: 12),
-                              SizedBox(width: 4),
-                              Text('BCCI Level 2 Certified Coach', style: TextStyle(color: Colors.white38, fontSize: 11)),
-                            ]),
+                            if (_me?['isVerifiedCoach'] == true)
+                              Row(children: const [
+                                Icon(Icons.workspace_premium_outlined, color: Colors.white38, size: 12),
+                                SizedBox(width: 4),
+                                Text('Verified Coach', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                              ]),
                             const SizedBox(height: 6),
                             Row(children: const [
                               Icon(Icons.check_circle, color: Color(0xFF00C853), size: 13),
@@ -216,13 +276,13 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _StatItem(icon: Icons.people_outline, value: '342', label: 'Players\nTrained'),
+                      _StatItem(icon: Icons.people_outline, value: '$_playerCount', label: 'Players'),
                       Container(height: 40, width: 1, color: Colors.white10),
-                      _StatItem(icon: Icons.emoji_events_outlined, value: '48', label: 'Tournaments'),
+                      _StatItem(icon: Icons.emoji_events_outlined, value: '$_leagueCount', label: 'Leagues'),
                       Container(height: 40, width: 1, color: Colors.white10),
-                      _StatItem(icon: Icons.military_tech_outlined, value: '26', label: 'Awards'),
+                      _StatItem(icon: Icons.sports_cricket_outlined, value: '$_matchesCompleted', label: 'Matches\nCompleted'),
                       Container(height: 40, width: 1, color: Colors.white10),
-                      _StatItem(icon: Icons.calendar_today_outlined, value: '6+', label: 'Years\nExperience'),
+                      _StatItem(icon: Icons.calendar_today_outlined, value: '${(_me?['yearsExperience'] as num?)?.toInt() ?? 0}', label: 'Years\nExperience'),
                     ],
                   ),
                 ),
@@ -260,10 +320,10 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(children: [
-                  _PlaybookTab(icon: Icons.directions_run, label: 'Training', isActive: _tabIndex == 0, onTap: () => setState(() => _tabIndex = 0)),
-                  _PlaybookTab(icon: Icons.people_outline, label: 'Teams', isActive: _tabIndex == 1, onTap: () => setState(() => _tabIndex = 1)),
-                  _PlaybookTab(icon: Icons.emoji_events_outlined, label: 'Achievements', isActive: _tabIndex == 2, onTap: () => setState(() => _tabIndex = 2)),
-                  _PlaybookTab(icon: Icons.campaign_outlined, label: 'Events', isActive: _tabIndex == 3, onTap: () => setState(() => _tabIndex = 3)),
+                  _PlaybookTab(icon: Icons.directions_run, label: 'Drills', isActive: _tabIndex == 0, onTap: () => setState(() => _tabIndex = 0)),
+                  _PlaybookTab(icon: Icons.psychology_outlined, label: 'Strategy', isActive: _tabIndex == 1, onTap: () => setState(() => _tabIndex = 1)),
+                  _PlaybookTab(icon: Icons.play_circle_outline, label: 'Videos', isActive: _tabIndex == 2, onTap: () => setState(() => _tabIndex = 2)),
+                  _PlaybookTab(icon: Icons.sticky_note_2_outlined, label: 'Notes', isActive: _tabIndex == 3, onTap: () => setState(() => _tabIndex = 3)),
                 ]),
               ),
 
@@ -277,7 +337,25 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
               // ── Content Grid ──
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: GridView.builder(
+                child: _loading
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 50),
+                        child: Center(
+                            child: CircularProgressIndicator(
+                                color: Color(0xFF00C853))),
+                      )
+                    : _currentContent.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 50),
+                            child: Center(
+                                child: Text(
+                                    'No content yet — tap + to create your first item',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 13))),
+                          )
+                        : GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -368,13 +446,14 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
                   child: Text('👤', style: TextStyle(fontSize: 64))),
             ),
             const SizedBox(height: 12),
-            const Text('Rahul Sharma',
-                style: TextStyle(
+            Text(_me?['fullName'] as String? ?? 'Coach',
+                style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.w800)),
-            const Text('Head Coach',
-                style: TextStyle(color: AppColors.primary, fontSize: 13)),
+            Text(_me?['title'] as String? ?? 'Coach',
+                style:
+                    const TextStyle(color: AppColors.primary, fontSize: 13)),
             const SizedBox(height: 20),
             Row(children: [
               Expanded(
@@ -549,35 +628,123 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
   }
 
   void _showUploadDialog(BuildContext context) {
+    final titleCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    String kind = 'DRILL';
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF111111),
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Add New Content',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800)),
-            const SizedBox(height: 20),
-            Row(children: [
-              Expanded(child: _UploadOption(icon: Icons.camera_alt, label: 'Camera', color: AppColors.primary, onTap: () => Navigator.pop(context))),
-              const SizedBox(width: 12),
-              Expanded(child: _UploadOption(icon: Icons.photo_library, label: 'Gallery', color: AppColors.primary, onTap: () => Navigator.pop(context))),
-              const SizedBox(width: 12),
-              Expanded(child: _UploadOption(icon: Icons.videocam, label: 'Video', color: AppColors.primary, onTap: () => Navigator.pop(context))),
-            ]),
-            const SizedBox(height: 8),
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel',
-                    style: TextStyle(color: Colors.white38))),
-          ],
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+              24, 24, 24, 24 + MediaQuery.of(sheetContext).viewInsets.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Add New Content',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: titleCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Title',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: const Color(0xFF1A1A1A),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: descCtrl,
+                style: const TextStyle(color: Colors.white),
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Description (optional)',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: const Color(0xFF1A1A1A),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final k in ['DRILL', 'STRATEGY', 'VIDEO', 'NOTE'])
+                    ChoiceChip(
+                      label: Text(k[0] + k.substring(1).toLowerCase()),
+                      selected: kind == k,
+                      selectedColor: AppColors.primary.withOpacity(0.3),
+                      backgroundColor: const Color(0xFF1A1A1A),
+                      labelStyle: TextStyle(
+                          color: kind == k
+                              ? AppColors.primary
+                              : Colors.white54,
+                          fontSize: 12),
+                      onSelected: (_) => setSheetState(() => kind = k),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    final title = titleCtrl.text.trim();
+                    if (title.isEmpty) return;
+                    Navigator.pop(sheetContext);
+                    try {
+                      await SportyQoApi.createPlaybookItem(
+                          title: title,
+                          description: descCtrl.text.trim(),
+                          kind: kind);
+                      await _load();
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Content added ✅'),
+                            backgroundColor: Color(0xFF00C853)),
+                      );
+                    } catch (_) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Could not save — try again'),
+                            backgroundColor: Colors.redAccent),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Save',
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w700)),
+                ),
+              ),
+              TextButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  child: const Center(
+                      child: Text('Cancel',
+                          style: TextStyle(color: Colors.white38)))),
+            ],
+          ),
         ),
       ),
     );
@@ -676,7 +843,7 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
                           const Icon(Icons.photo_outlined,
                               color: Colors.white, size: 12),
                           const SizedBox(width: 4),
-                          Text('${item['photos']} photos',
+                          Text(item['kindLabel'] as String? ?? '',
                               style: const TextStyle(
                                   color: Colors.white, fontSize: 11)),
                         ]),
@@ -928,9 +1095,9 @@ class _ContentCard extends StatelessWidget {
                 color: Colors.black54,
                 borderRadius: BorderRadius.circular(6)),
             child: Row(children: [
-              const Icon(Icons.photo_outlined, color: Colors.white, size: 10),
+              const Icon(Icons.label_outline, color: Colors.white, size: 10),
               const SizedBox(width: 3),
-              Text('${item['photos']}',
+              Text(item['kindLabel'] as String? ?? '',
                   style: const TextStyle(
                       color: Colors.white,
                       fontSize: 10,
@@ -981,34 +1148,3 @@ class _ContentCard extends StatelessWidget {
   }
 }
 
-class _UploadOption extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-  const _UploadOption(
-      {required this.icon,
-        required this.label,
-        required this.color,
-        required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Column(children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 8),
-          Text(label, style: TextStyle(color: color, fontSize: 12)),
-        ]),
-      ),
-    );
-  }
-}

@@ -201,6 +201,20 @@ class SportyQoApi {
     }) as List<dynamic>;
   }
 
+  /// Coach creates a playbook item (drill/strategy/video/note).
+  static Future<Map<String, dynamic>> createPlaybookItem({
+    required String title,
+    String? description,
+    String kind = 'NOTE',
+  }) async {
+    return await _api.post('/playbook', body: {
+      'title': title,
+      if (description != null && description.isNotEmpty)
+        'description': description,
+      'kind': kind,
+    }) as Map<String, dynamic>;
+  }
+
   static Future<List<dynamic>> dugoutThreads() async {
     return await _api.get('/dugout') as List<dynamic>;
   }
