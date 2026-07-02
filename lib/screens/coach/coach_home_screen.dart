@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_theme.dart';
 import '../../services/sportyqo_api.dart';
 import 'coach_dugout_screen.dart';
 import 'coach_playbook_screen.dart';

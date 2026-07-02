@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter/services.dart';
-import '../../theme/app_theme.dart';
 import 'coach_home_screen.dart';
 
 class ShareLeagueCodeScreen extends StatelessWidget {

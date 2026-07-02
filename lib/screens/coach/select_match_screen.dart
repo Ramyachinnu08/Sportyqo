@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_theme.dart';
 import 'select_players_screen.dart';
 import '../../services/sportyqo_api.dart';
 

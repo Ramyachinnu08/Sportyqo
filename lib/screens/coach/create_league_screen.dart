@@ -3,7 +3,6 @@ import 'package:share_plus/share_plus.dart';
 import '../../services/sportyqo_api.dart';
 import '../../services/api_client.dart';
 import 'package:flutter/services.dart';
-import '../../theme/app_theme.dart';
 import 'coach_home_screen.dart';
 
 class CreateLeagueScreen extends StatefulWidget {
@@ -52,7 +51,6 @@ class _CreateLeagueScreenState
 
   bool _creating = false;
   String? _createdCode;
-  String? _createdLeagueId;
 
   Future<void> _createLeague() async {
     final name = _nameController.text.trim();
@@ -110,7 +108,6 @@ class _CreateLeagueScreenState
       if (!mounted) return;
       setState(() {
         _createdCode = league['leagueCode'] as String?;
-        _createdLeagueId = league['id'] as String?;
         _step = 1;
       });
     } on ApiException catch (e) {

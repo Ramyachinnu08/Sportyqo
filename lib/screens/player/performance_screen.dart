@@ -387,8 +387,6 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
 class _MatchTile extends StatelessWidget {
   final String teamLetter, opponent, date, stat1, stat2, badge, points;
   final Color badgeColor;
-  final String? extraBadge;
-  final Color? extraBadgeColor;
 
   const _MatchTile({
     required this.teamLetter,
@@ -399,8 +397,6 @@ class _MatchTile extends StatelessWidget {
     required this.badge,
     required this.points,
     required this.badgeColor,
-    this.extraBadge,
-    this.extraBadgeColor,
   });
 
   @override
@@ -444,14 +440,6 @@ class _MatchTile extends StatelessWidget {
                   decoration: BoxDecoration(color: badgeColor.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
                   child: Text(badge, style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.w600)),
                 ),
-                if (extraBadge != null) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: extraBadgeColor!.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                    child: Text(extraBadge!, style: TextStyle(color: extraBadgeColor, fontSize: 10, fontWeight: FontWeight.w600)),
-                  ),
-                ],
               ]),
             ],
           ),

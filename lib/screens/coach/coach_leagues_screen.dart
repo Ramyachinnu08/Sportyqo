@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_theme.dart';
 import 'select_players_screen.dart';
 import 'select_match_screen.dart';
 import '../../services/sportyqo_api.dart';
@@ -446,15 +445,13 @@ class _TeamsScreenState extends State<_TeamsScreen> {
         SportyQoApi.leagueStandings(widget.leagueId),
       ]);
       if (!mounted) return;
-      final standings = (results[1] as List<dynamic>)
-          .cast<Map<String, dynamic>>();
+      final standings = results[1].cast<Map<String, dynamic>>();
       final winsByTeam = {
         for (final st in standings)
           st['teamId'] as String: (st['wins'] as num?)?.toInt() ?? 0,
       };
       setState(() {
-        _teams = (results[0] as List<dynamic>)
-            .cast<Map<String, dynamic>>()
+        _teams = results[0].cast<Map<String, dynamic>>()
             .map((t) => {
                   'id': t['id'],
                   'name': t['name'] ?? '',

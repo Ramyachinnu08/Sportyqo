@@ -642,23 +642,6 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
 
 // ── Reusable Widgets ──────────────────────────────────────────────────
 
-class _StatItem extends StatelessWidget {
-  final String value, label;
-  const _StatItem({required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(children: [
-        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
-        Text(label,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white38, fontSize: 9)),
-      ]),
-    );
-  }
-}
-
 class _PlaybookTab extends StatelessWidget {
   final IconData icon;
   final String label;

@@ -466,7 +466,6 @@ class _CoachDugoutScreenState extends State<CoachDugoutScreen> {
         final u = _updates[index];
         return StatefulBuilder(
           builder: (context, setLocal) {
-            bool liked = false;
             return Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(

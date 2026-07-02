@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../theme/app_theme.dart';
 import '../auth/choose_role_screen.dart';
 import '../../services/sportyqo_api.dart';
 import '../../services/auth_service.dart';
