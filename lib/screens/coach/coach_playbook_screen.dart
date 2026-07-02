@@ -24,6 +24,11 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
   List<Map<String, dynamic>> _recommendedPlayers = [];
   bool _loading = true;
 
+  List<Map<String, dynamic>> get _currentContent {
+    const kinds = ['DRILL', 'STRATEGY', 'VIDEO', 'NOTE'];
+    return _byKind[kinds[_tabIndex]] ?? [];
+  }
+
   static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   static ({String emoji, Color color}) _kindStyle(String kind) {

@@ -1007,8 +1007,6 @@ class _NotificationScreenState extends State<_NotificationScreen> {
                           _notifications.map((n) => {...n, 'read': true}).toList();
                     });
                     SportyQoApi.markNotificationsRead();
-                    setState(() {
-                    });
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                       content: Text('All marked as read ✅'),
                       backgroundColor: AppColors.primary,
