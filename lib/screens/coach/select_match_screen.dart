@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import 'select_players_screen.dart';
+import '../../services/sportyqo_api.dart';
 
 class SelectMatchScreen extends StatefulWidget {
   final String leagueName;
-  const SelectMatchScreen({super.key, required this.leagueName});
+  final String leagueId;
+  const SelectMatchScreen(
+      {super.key, required this.leagueName, required this.leagueId});
 
   @override
   State<SelectMatchScreen> createState() => _SelectMatchScreenState();
@@ -12,14 +15,109 @@ class SelectMatchScreen extends StatefulWidget {
 
 class _SelectMatchScreenState extends State<SelectMatchScreen> {
   int _tabIndex = 0;
+  bool _loading = true;
+  List<Map<String, dynamic>> _matches = [];
 
-  final List<Map<String, dynamic>> _matches = [
-    {'id': '1', 'team1': 'Falcons FC', 'team2': 'Warriors United', 'date': '24 May 2025', 'time': '06:00 PM', 'venue': 'Green Field Arena', 'status': 'Upcoming'},
-    {'id': '2', 'team1': 'Royal Strikers', 'team2': 'Blaze Cricket Club', 'date': '22 May 2025', 'time': '04:00 PM', 'venue': 'City Stadium', 'status': 'Live'},
-    {'id': '3', 'team1': 'Titans Academy', 'team2': 'Rising Stars', 'date': '20 May 2025', 'time': '05:00 PM', 'venue': 'Sports Complex', 'status': 'Completed'},
-    {'id': '4', 'team1': 'Victory XI', 'team2': 'Eagle Hearts', 'date': '18 May 2025', 'time': '03:00 PM', 'venue': 'City Stadium', 'status': 'Completed'},
-    {'id': '5', 'team1': 'Falcons FC', 'team2': 'Royal Strikers', 'date': '26 May 2025', 'time': '06:00 PM', 'venue': 'Green Field Arena', 'status': 'Upcoming'},
-  ];
+  static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.matches(leagueId: widget.leagueId);
+      if (!mounted) return;
+      setState(() {
+        _matches = data.cast<Map<String, dynamic>>().map((m) {
+          final dt =
+              DateTime.tryParse(m['scheduledAt'] as String? ?? '')?.toLocal();
+          final status = (m['status'] as String? ?? 'SCHEDULED').toUpperCase();
+          final home = m['homeTeam'] as Map<String, dynamic>?;
+          final away = m['awayTeam'] as Map<String, dynamic>?;
+          return {
+            'id': m['id'],
+            'team1': home?['name'] ?? 'TBD',
+            'team1Id': home?['id'],
+            'team2': away?['name'] ?? 'TBD',
+            'team2Id': away?['id'],
+            'date': dt == null
+                ? ''
+                : '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}',
+            'time': dt == null
+                ? ''
+                : '${dt.hour % 12 == 0 ? 12 : dt.hour % 12}:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}',
+            'venue': m['venue'] ?? 'Venue TBD',
+            'status': status == 'COMPLETED'
+                ? 'Completed'
+                : status == 'LIVE'
+                    ? 'Live'
+                    : 'Upcoming',
+          };
+        }).toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _pickTeam(Map<String, dynamic> m) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF111111),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Whose stats do you want to update?',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+            for (final side in ['team1', 'team2'])
+              if (m['${side}Id'] != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SelectPlayersScreen(
+                              teamId: m['${side}Id'] as String,
+                              matchId: m['id'] as String,
+                              teamName: m[side] as String,
+                              matchName: '${m['team1']} vs ${m['team2']}',
+                            ),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            const Color(0xFF1A6BFF).withOpacity(0.2),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: Text(m[side] as String,
+                          style: const TextStyle(color: Colors.white)),
+                    ),
+                  ),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
 
   List<Map<String, dynamic>> get _filtered {
     if (_tabIndex == 0) return _matches;
@@ -85,7 +183,11 @@ class _SelectMatchScreenState extends State<SelectMatchScreen> {
             const SizedBox(height: 12),
 
             Expanded(
-              child: _filtered.isEmpty
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF1A6BFF)))
+                  : _filtered.isEmpty
                   ? const Center(child: Text('No matches found', style: TextStyle(color: Colors.white38)))
                   : ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -94,15 +196,7 @@ class _SelectMatchScreenState extends State<SelectMatchScreen> {
                 itemBuilder: (context, i) {
                   final m = _filtered[i];
                   return GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => SelectPlayersScreen(
-                          teamName: m['team1'] as String,
-                          matchName: '${m['team1']} vs ${m['team2']}',
-                        ),
-                      ),
-                    ),
+                    onTap: () => _pickTeam(m),
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(

@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sportyqo_api.dart';
+import '../../services/api_client.dart';
 
 class SelectPlayersScreen extends StatefulWidget {
   final String teamName;
   final String matchName;
+  final String? teamId;
+  final String? matchId;
   const SelectPlayersScreen({
     super.key,
-    required this.teamName,
-    required this.matchName,
+    this.teamName = 'Players',
+    this.matchName = '',
+    this.teamId,
+    this.matchId,
   });
 
   @override
@@ -18,17 +24,124 @@ class SelectPlayersScreen extends StatefulWidget {
 class _SelectPlayersScreenState
     extends State<SelectPlayersScreen> {
   int _tabIndex = 0;
+  bool _loading = true;
+  List<Map<String, dynamic>> _players = [];
 
-  final List<Map<String, dynamic>> _players = [
-    {'name': 'Rahul Sharma', 'initials': 'RS', 'role': 'Top Order', 'runs': 42, 'wkts': 0, 'pts': 18.0, 'color': const Color(0xFF1A3A5C)},
-    {'name': 'Arjun Kumar', 'initials': 'AK', 'role': 'Top Order', 'runs': 28, 'wkts': 0, 'pts': 12.5, 'color': const Color(0xFF1A5C3A)},
-    {'name': 'Vivaan Patel', 'initials': 'VP', 'role': 'Middle Order', 'runs': 15, 'wkts': 0, 'pts': 7.0, 'color': const Color(0xFF3A1A5C)},
-    {'name': 'Siddharth K', 'initials': 'SK', 'role': 'Middle Order', 'runs': 34, 'wkts': 0, 'pts': 15.0, 'color': const Color(0xFF5C3A1A)},
-    {'name': 'Manan Kapoor', 'initials': 'MK', 'role': 'All Rounder', 'runs': 22, 'wkts': 1, 'pts': 14.5, 'color': const Color(0xFF1A5C5C)},
-    {'name': 'Yash Desai', 'initials': 'YD', 'role': 'All Rounder', 'runs': 12, 'wkts': 2, 'pts': 16.0, 'color': const Color(0xFF5C1A3A)},
-    {'name': 'Aarav Tiwari', 'initials': 'AT', 'role': 'Bowler', 'runs': 6, 'wkts': 3, 'pts': 17.5, 'color': const Color(0xFF3A5C1A)},
-    {'name': 'Rohan Das', 'initials': 'RD', 'role': 'Bowler', 'runs': 2, 'wkts': 1, 'pts': 8.0, 'color': const Color(0xFF5C5C1A)},
+  static const _palette = [
+    Color(0xFF1A3A5C), Color(0xFF1A5C3A), Color(0xFF3A1A5C),
+    Color(0xFF5C3A1A), Color(0xFF1A5C5C), Color(0xFF5C1A3A),
+    Color(0xFF3A5C1A), Color(0xFF5C5C1A),
   ];
+
+  static String _initialsOf(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return '?';
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return (parts.first[0] + parts.last[0]).toUpperCase();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      List<Map<String, dynamic>> rows;
+      if (widget.teamId != null) {
+        // Roster of a specific team, prefilled with any saved stats
+        // for the selected match.
+        final results = await Future.wait([
+          SportyQoApi.teamRoster(widget.teamId!),
+          if (widget.matchId != null)
+            SportyQoApi.matchStats(widget.matchId!, teamId: widget.teamId),
+        ]);
+        final roster = ((results[0] as Map<String, dynamic>)['roster']
+                as List<dynamic>)
+            .cast<Map<String, dynamic>>();
+        final statLines = results.length > 1
+            ? (results[1] as List<dynamic>).cast<Map<String, dynamic>>()
+            : <Map<String, dynamic>>[];
+        final byPlayer = {
+          for (final l in statLines) l['playerId'] as String: l,
+        };
+        rows = List.generate(roster.length, (i) {
+          final r = roster[i];
+          final line = byPlayer[r['playerId'] as String];
+          final stats =
+              (line?['stats'] as Map<String, dynamic>?) ?? const {};
+          return {
+            'id': r['playerId'],
+            'name': r['fullName'] ?? 'Player',
+            'initials': _initialsOf(r['fullName'] as String? ?? '?'),
+            'role': r['position'] ?? 'Player',
+            'runs': (stats['runs'] as num?)?.toInt() ?? 0,
+            'fours': (stats['fours'] as num?)?.toInt() ?? 0,
+            'sixes': (stats['sixes'] as num?)?.toInt() ?? 0,
+            'wkts': (stats['wickets'] as num?)?.toInt() ?? 0,
+            'catches': (stats['catches'] as num?)?.toInt() ?? 0,
+            'runOuts': (stats['runOuts'] as num?)?.toInt() ?? 0,
+            'pts': ((line?['qoPoints'] as num?) ?? 0).toDouble(),
+            'color': _palette[i % _palette.length],
+          };
+        });
+      } else {
+        // All players across the coach's leagues.
+        final data = await SportyQoApi.searchPlayers();
+        rows = List.generate(data.length, (i) {
+          final r = data[i] as Map<String, dynamic>;
+          return {
+            'id': r['id'],
+            'name': r['fullName'] ?? 'Player',
+            'initials': _initialsOf(r['fullName'] as String? ?? '?'),
+            'role': r['playerCode'] ?? 'Player',
+            'runs': 0,
+            'fours': 0,
+            'sixes': 0,
+            'wkts': 0,
+            'catches': 0,
+            'runOuts': 0,
+            'pts': ((r['qoScore'] as num?) ?? 0).toDouble(),
+            'color': _palette[i % _palette.length],
+          };
+        });
+      }
+      if (!mounted) return;
+      setState(() {
+        _players = rows;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _saveToBackend(int index, Map<String, dynamic> updated) async {
+    if (widget.teamId == null || widget.matchId == null) return;
+    try {
+      await SportyQoApi.savePlayerStats(
+        teamId: widget.teamId!,
+        playerId: updated['id'] as String,
+        matchId: widget.matchId!,
+        stats: {
+          'runs': updated['runs'],
+          'fours': updated['fours'],
+          'sixes': updated['sixes'],
+          'wickets': updated['wkts'],
+          'catches': updated['catches'],
+          'runOuts': updated['runOuts'],
+        },
+        qoPoints: (updated['pts'] as double).round(),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not save stats: ${e.message}'),
+        backgroundColor: Colors.redAccent,
+      ));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -92,9 +205,18 @@ class _SelectPlayersScreenState
             Container(height: 1, color: Colors.white10),
 
             Expanded(
-              child: _tabIndex == 0
-                  ? _buildPlayersList()
-                  : _buildTeamSummary(),
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF1A6BFF)))
+                  : _players.isEmpty
+                      ? const Center(
+                          child: Text('No players yet',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 14)))
+                      : _tabIndex == 0
+                          ? _buildPlayersList()
+                          : _buildTeamSummary(),
             ),
           ],
         ),
@@ -155,9 +277,17 @@ class _SelectPlayersScreenState
                 SizedBox(width: 50, child: Text('${p['pts']}', style: const TextStyle(color: Colors.white, fontSize: 13), textAlign: TextAlign.center)),
                 // Edit button
                 GestureDetector(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _EditPlayerStatsScreen(player: p, onSave: (updated) {
-                    setState(() => _players[i] = updated);
-                  }))),
+                  onTap: widget.matchId == null
+                      ? null
+                      : () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => _EditPlayerStatsScreen(
+                                  player: p,
+                                  onSave: (updated) {
+                                    setState(() => _players[i] = updated);
+                                    _saveToBackend(i, updated);
+                                  }))),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
@@ -198,8 +328,8 @@ class _SelectPlayersScreenState
               children: [
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('Total Runs', style: TextStyle(color: Colors.white38, fontSize: 11)),
-                  Text('$totalRuns/6', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
-                  const Text('20 Overs', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  Text('$totalRuns', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                  const Text('This match', style: TextStyle(color: Colors.white38, fontSize: 11)),
                 ]),
                 Container(height: 50, width: 1, color: Colors.white10),
                 Column(children: [
@@ -319,12 +449,12 @@ class _EditPlayerStatsScreenState extends State<_EditPlayerStatsScreen> {
   @override
   void initState() {
     super.initState();
-    _runs = widget.player['runs'] as int;
-    _fours = 5;
-    _sixes = 2;
-    _wickets = widget.player['wkts'] as int;
-    _catches = 1;
-    _runOuts = 0;
+    _runs = (widget.player['runs'] as num?)?.toInt() ?? 0;
+    _fours = (widget.player['fours'] as num?)?.toInt() ?? 0;
+    _sixes = (widget.player['sixes'] as num?)?.toInt() ?? 0;
+    _wickets = (widget.player['wkts'] as num?)?.toInt() ?? 0;
+    _catches = (widget.player['catches'] as num?)?.toInt() ?? 0;
+    _runOuts = (widget.player['runOuts'] as num?)?.toInt() ?? 0;
   }
 
   double _calculatePts() {
@@ -469,7 +599,11 @@ class _EditPlayerStatsScreenState extends State<_EditPlayerStatsScreen> {
                   onPressed: () {
                     final updated = Map<String, dynamic>.from(widget.player);
                     updated['runs'] = _runs;
+                    updated['fours'] = _fours;
+                    updated['sixes'] = _sixes;
                     updated['wkts'] = _wickets;
+                    updated['catches'] = _catches;
+                    updated['runOuts'] = _runOuts;
                     updated['pts'] = _calculatePts();
                     widget.onSave(updated);
                     Navigator.push(

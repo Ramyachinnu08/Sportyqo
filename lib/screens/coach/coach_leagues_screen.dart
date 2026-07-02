@@ -1,12 +1,87 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import 'select_players_screen.dart';
+import 'select_match_screen.dart';
+import '../../services/sportyqo_api.dart';
 
-class CoachLeaguesScreen extends StatelessWidget {
+class CoachLeaguesScreen extends StatefulWidget {
   const CoachLeaguesScreen({super.key});
 
   @override
+  State<CoachLeaguesScreen> createState() => _CoachLeaguesScreenState();
+}
+
+class _CoachLeaguesScreenState extends State<CoachLeaguesScreen> {
+  List<Map<String, dynamic>> _leagues = [];
+  int _selected = 0;
+  bool _loading = true;
+
+  Map<String, dynamic>? get _league =>
+      _leagues.isEmpty ? null : _leagues[_selected];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.myLeagues();
+      if (!mounted) return;
+      setState(() {
+        _leagues = data.cast<Map<String, dynamic>>();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0A0A0A),
+        body: Center(
+            child: CircularProgressIndicator(color: Color(0xFF00C853))),
+      );
+    }
+    if (_league == null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0A0A0A),
+        body: SafeArea(
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Row(children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Icon(Icons.arrow_back_ios,
+                      color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 16),
+                const Text('View League',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800)),
+              ]),
+            ),
+            const Expanded(
+              child: Center(
+                child: Text('You have not created any leagues yet',
+                    style: TextStyle(color: Colors.white54, fontSize: 14)),
+              ),
+            ),
+          ]),
+        ),
+      );
+    }
+    final counts =
+        (_league!['counts'] as Map<String, dynamic>?) ?? const {};
+    final teamCount = (counts['teams'] as num?)?.toInt() ?? 0;
+    final playerCount = (counts['players'] as num?)?.toInt() ?? 0;
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
@@ -44,6 +119,45 @@ class CoachLeaguesScreen extends StatelessWidget {
                     horizontal: 16),
                 child: Column(
                   children: [
+                    if (_leagues.length > 1) ...[
+                      SizedBox(
+                        height: 40,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _leagues.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: 8),
+                          itemBuilder: (context, i) => GestureDetector(
+                            onTap: () => setState(() => _selected = i),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: i == _selected
+                                    ? const Color(0xFF00C853)
+                                        .withOpacity(0.15)
+                                    : Colors.white10,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                    color: i == _selected
+                                        ? const Color(0xFF00C853)
+                                        : Colors.white12),
+                              ),
+                              child: Text(
+                                  _leagues[i]['name'] as String? ?? '',
+                                  style: TextStyle(
+                                      color: i == _selected
+                                          ? const Color(0xFF00C853)
+                                          : Colors.white60,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
 
                     // ── League Card ──
                     Container(
@@ -74,9 +188,10 @@ class CoachLeaguesScreen extends StatelessWidget {
                                     .withOpacity(
                                     0.3)),
                           ),
-                          child: const Center(
-                              child: Text('🦅',
-                                  style: TextStyle(
+                          child: Center(
+                              child: Text(
+                                  _league!['icon'] as String? ?? '🏆',
+                                  style: const TextStyle(
                                       fontSize:
                                       32))),
                         ),
@@ -88,10 +203,10 @@ class CoachLeaguesScreen extends StatelessWidget {
                                 .start,
                             children: [
                               Row(children: [
-                                const Expanded(
+                                Expanded(
                                   child: Text(
-                                      'Falcons U16 Premier League',
-                                      style: TextStyle(
+                                      _league!['name'] as String? ?? '',
+                                      style: const TextStyle(
                                           color: Colors
                                               .white,
                                           fontWeight:
@@ -122,8 +237,12 @@ class CoachLeaguesScreen extends StatelessWidget {
                                             .withOpacity(
                                             0.3)),
                                   ),
-                                  child: const Text(
-                                      'Active',
+                                  child: Text(
+                                      (_league!['status'] as String? ??
+                                              'ACTIVE') ==
+                                          'ACTIVE'
+                                          ? 'Active'
+                                          : 'Ended',
                                       style: TextStyle(
                                           color: Color(
                                               0xFF00C853),
@@ -136,18 +255,27 @@ class CoachLeaguesScreen extends StatelessWidget {
                               ]),
                               const SizedBox(
                                   height: 4),
-                              const Text(
-                                  'U16  •  Cricket  •  T20',
-                                  style: TextStyle(
+                              Text(
+                                  [
+                                    (_league!['sport'] as Map<String,
+                                            dynamic>?)?['name'] ??
+                                        'Sport',
+                                    _league!['gender'] == 'MENS'
+                                        ? "Men's"
+                                        : _league!['gender'] == 'WOMENS'
+                                            ? "Women's"
+                                            : 'Mixed',
+                                  ].join('  •  '),
+                                  style: const TextStyle(
                                       color: Colors
                                           .white54,
                                       fontSize:
                                       13)),
                               const SizedBox(
                                   height: 2),
-                              const Text(
-                                  '8 Teams  •  Bangalore, Karnataka',
-                                  style: TextStyle(
+                              Text(
+                                  '$teamCount Teams  •  ${_league!['location'] ?? ''}',
+                                  style: const TextStyle(
                                       color: Colors
                                           .white38,
                                       fontSize:
@@ -164,24 +292,26 @@ class CoachLeaguesScreen extends StatelessWidget {
                     _LeagueMenuItem(
                       icon: Icons.people_outline,
                       title: 'Teams',
-                      subtitle: '8 Teams',
+                      subtitle: '$teamCount Teams',
                       onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) =>
-                              const _TeamsScreen())),
+                              builder: (_) => _TeamsScreen(
+                                  leagueId:
+                                      _league!['id'] as String))),
                     ),
                     const SizedBox(height: 10),
                     _LeagueMenuItem(
                       icon: Icons
                           .calendar_today_outlined,
                       title: 'Matches',
-                      subtitle: '12 Matches',
+                      subtitle: 'Schedule & results',
                       onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) =>
-                              const _MatchesScreen())),
+                              builder: (_) => _MatchesScreen(
+                                  leagueId:
+                                      _league!['id'] as String))),
                     ),
                     const SizedBox(height: 10),
                     _LeagueMenuItem(
@@ -192,24 +322,35 @@ class CoachLeaguesScreen extends StatelessWidget {
                       onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) =>
-                              const _StandingsScreen())),
+                              builder: (_) => _StandingsScreen(
+                                  leagueId:
+                                      _league!['id'] as String))),
+                    ),
+                    const SizedBox(height: 10),
+                    _LeagueMenuItem(
+                      icon: Icons.edit_note,
+                      title: 'Update Stats',
+                      subtitle: 'Enter match performance',
+                      onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => SelectMatchScreen(
+                                  leagueId:
+                                      _league!['id'] as String,
+                                  leagueName: _league!['name']
+                                          as String? ??
+                                      ''))),
                     ),
                     const SizedBox(height: 10),
                     _LeagueMenuItem(
                       icon: Icons.person_outline,
                       title: 'Players',
-                      subtitle: '64 Players',
+                      subtitle: '$playerCount Players',
                       onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
                               builder: (_) =>
-                              const SelectPlayersScreen(
-                                teamName:
-                                'Falcons FC',
-                                matchName:
-                                'Falcons FC vs Warriors United',
-                              ))),
+                                  const SelectPlayersScreen())),
                     ),
 
                     const SizedBox(height: 32),
@@ -280,20 +421,54 @@ class _LeagueMenuItem extends StatelessWidget {
 
 // ── Teams Screen ──────────────────────────────────────────────────────
 
-class _TeamsScreen extends StatelessWidget {
-  const _TeamsScreen();
+class _TeamsScreen extends StatefulWidget {
+  const _TeamsScreen({required this.leagueId});
+  final String leagueId;
 
-  final List<Map<String, dynamic>> _teams =
-  const [
-    {'name': 'Falcons FC', 'players': 8, 'wins': 5, 'emoji': '🦅'},
-    {'name': 'Warriors United', 'players': 8, 'wins': 4, 'emoji': '⚔️'},
-    {'name': 'Royal Strikers', 'players': 8, 'wins': 4, 'emoji': '👑'},
-    {'name': 'Blaze Cricket Club', 'players': 8, 'wins': 3, 'emoji': '🔥'},
-    {'name': 'Titans Academy', 'players': 8, 'wins': 3, 'emoji': '⚡'},
-    {'name': 'Rising Stars', 'players': 8, 'wins': 2, 'emoji': '⭐'},
-    {'name': 'Victory XI', 'players': 8, 'wins': 2, 'emoji': '🏆'},
-    {'name': 'Eagle Hearts', 'players': 8, 'wins': 1, 'emoji': '🦅'},
-  ];
+  @override
+  State<_TeamsScreen> createState() => _TeamsScreenState();
+}
+
+class _TeamsScreenState extends State<_TeamsScreen> {
+  List<Map<String, dynamic>> _teams = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final results = await Future.wait([
+        SportyQoApi.leagueTeams(widget.leagueId),
+        SportyQoApi.leagueStandings(widget.leagueId),
+      ]);
+      if (!mounted) return;
+      final standings = (results[1] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      final winsByTeam = {
+        for (final st in standings)
+          st['teamId'] as String: (st['wins'] as num?)?.toInt() ?? 0,
+      };
+      setState(() {
+        _teams = (results[0] as List<dynamic>)
+            .cast<Map<String, dynamic>>()
+            .map((t) => {
+                  'id': t['id'],
+                  'name': t['name'] ?? '',
+                  'players': (t['rosterCount'] as num?)?.toInt() ?? 0,
+                  'wins': winsByTeam[t['id'] as String] ?? 0,
+                  'emoji': t['icon'] ?? '🏅',
+                })
+            .toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -344,7 +519,16 @@ class _TeamsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: ListView.separated(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF00C853)))
+                  : _teams.isEmpty
+                      ? const Center(
+                          child: Text('No teams yet',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 14)))
+                      : ListView.separated(
                 padding:
                 const EdgeInsets.symmetric(
                     horizontal: 16),
@@ -430,17 +614,68 @@ class _TeamsScreen extends StatelessWidget {
 
 // ── Matches Screen ────────────────────────────────────────────────────
 
-class _MatchesScreen extends StatelessWidget {
-  const _MatchesScreen();
+class _MatchesScreen extends StatefulWidget {
+  const _MatchesScreen({required this.leagueId});
+  final String leagueId;
 
-  final List<Map<String, dynamic>> _matches =
-  const [
-    {'team1': 'Falcons FC', 'team2': 'Warriors United', 'date': '24 May 2025', 'time': '06:00 PM', 'status': 'Upcoming', 'statusColor': Color(0xFF1A6BFF)},
-    {'team1': 'Royal Strikers', 'team2': 'Blaze Cricket Club', 'date': '22 May 2025', 'time': '04:00 PM', 'status': 'Completed', 'statusColor': Color(0xFF00C853)},
-    {'team1': 'Titans Academy', 'team2': 'Rising Stars', 'date': '20 May 2025', 'time': '05:00 PM', 'status': 'Completed', 'statusColor': Color(0xFF00C853)},
-    {'team1': 'Victory XI', 'team2': 'Eagle Hearts', 'date': '18 May 2025', 'time': '03:00 PM', 'status': 'Completed', 'statusColor': Color(0xFF00C853)},
-    {'team1': 'Falcons FC', 'team2': 'Royal Strikers', 'date': '26 May 2025', 'time': '06:00 PM', 'status': 'Upcoming', 'statusColor': Color(0xFF1A6BFF)},
-  ];
+  @override
+  State<_MatchesScreen> createState() => _MatchesScreenState();
+}
+
+class _MatchesScreenState extends State<_MatchesScreen> {
+  List<Map<String, dynamic>> _matches = [];
+  bool _loading = true;
+
+  static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.matches(leagueId: widget.leagueId);
+      if (!mounted) return;
+      setState(() {
+        _matches = data.cast<Map<String, dynamic>>().map((m) {
+          final dt =
+              DateTime.tryParse(m['scheduledAt'] as String? ?? '')?.toLocal();
+          final status = (m['status'] as String? ?? 'SCHEDULED').toUpperCase();
+          return {
+            'team1':
+                (m['homeTeam'] as Map<String, dynamic>?)?['name'] ?? 'TBD',
+            'team2':
+                (m['awayTeam'] as Map<String, dynamic>?)?['name'] ?? 'TBD',
+            'date': dt == null
+                ? ''
+                : '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}',
+            'time': dt == null
+                ? ''
+                : '${dt.hour % 12 == 0 ? 12 : dt.hour % 12}:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}',
+            'status': status == 'COMPLETED'
+                ? 'Completed'
+                : status == 'LIVE'
+                    ? 'Live'
+                    : status == 'CANCELLED'
+                        ? 'Cancelled'
+                        : 'Upcoming',
+            'statusColor': status == 'COMPLETED'
+                ? const Color(0xFF00C853)
+                : status == 'LIVE'
+                    ? Colors.redAccent
+                    : status == 'CANCELLED'
+                        ? Colors.white38
+                        : const Color(0xFF1A6BFF),
+          };
+        }).toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -471,7 +706,16 @@ class _MatchesScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: ListView.separated(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF1A6BFF)))
+                  : _matches.isEmpty
+                      ? const Center(
+                          child: Text('No matches scheduled yet',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 14)))
+                      : ListView.separated(
                 padding:
                 const EdgeInsets.symmetric(
                     horizontal: 16),
@@ -590,20 +834,47 @@ class _MatchesScreen extends StatelessWidget {
 
 // ── Standings Screen ──────────────────────────────────────────────────
 
-class _StandingsScreen extends StatelessWidget {
-  const _StandingsScreen();
+class _StandingsScreen extends StatefulWidget {
+  const _StandingsScreen({required this.leagueId});
+  final String leagueId;
 
-  final List<Map<String, dynamic>> _standings =
-  const [
-    {'pos': 1, 'team': 'Falcons FC', 'p': 10, 'w': 7, 'l': 2, 'pts': 14, 'emoji': '🦅'},
-    {'pos': 2, 'team': 'Warriors United', 'p': 10, 'w': 6, 'l': 3, 'pts': 12, 'emoji': '⚔️'},
-    {'pos': 3, 'team': 'Royal Strikers', 'p': 10, 'w': 5, 'l': 4, 'pts': 10, 'emoji': '👑'},
-    {'pos': 4, 'team': 'Blaze Cricket Club', 'p': 10, 'w': 4, 'l': 5, 'pts': 8, 'emoji': '🔥'},
-    {'pos': 5, 'team': 'Titans Academy', 'p': 10, 'w': 3, 'l': 6, 'pts': 6, 'emoji': '⚡'},
-    {'pos': 6, 'team': 'Rising Stars', 'p': 10, 'w': 3, 'l': 6, 'pts': 6, 'emoji': '⭐'},
-    {'pos': 7, 'team': 'Victory XI', 'p': 10, 'w': 2, 'l': 7, 'pts': 4, 'emoji': '🏆'},
-    {'pos': 8, 'team': 'Eagle Hearts', 'p': 10, 'w': 1, 'l': 8, 'pts': 2, 'emoji': '🦅'},
-  ];
+  @override
+  State<_StandingsScreen> createState() => _StandingsScreenState();
+}
+
+class _StandingsScreenState extends State<_StandingsScreen> {
+  List<Map<String, dynamic>> _standings = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.leagueStandings(widget.leagueId);
+      if (!mounted) return;
+      setState(() {
+        _standings = data
+            .cast<Map<String, dynamic>>()
+            .map((st) => {
+                  'pos': st['rank'],
+                  'team': st['name'] ?? '',
+                  'p': (st['played'] as num?)?.toInt() ?? 0,
+                  'w': (st['wins'] as num?)?.toInt() ?? 0,
+                  'l': (st['losses'] as num?)?.toInt() ?? 0,
+                  'pts': (st['points'] as num?)?.toInt() ?? 0,
+                  'emoji': st['icon'] ?? '🏅',
+                })
+            .toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -706,7 +977,16 @@ class _StandingsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: ListView.separated(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF00C853)))
+                  : _standings.isEmpty
+                      ? const Center(
+                          child: Text('No standings yet — play some matches',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 14)))
+                      : ListView.separated(
                 padding:
                 const EdgeInsets.symmetric(
                     horizontal: 16),

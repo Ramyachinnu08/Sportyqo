@@ -93,6 +93,8 @@ class _CoachHomeTabState extends State<_CoachHomeTab> {
   String? _coachTitle;
   String? _academy;
   bool _isVerified = true;
+  int _playerCount = 0;
+  int _leagueCount = 0;
 
   @override
   void initState() {
@@ -105,11 +107,14 @@ class _CoachHomeTabState extends State<_CoachHomeTab> {
       final data = await SportyQoApi.coachDashboard();
       if (!mounted) return;
       final coach = data['coach'] as Map<String, dynamic>?;
+      final counts = data['counts'] as Map<String, dynamic>?;
       setState(() {
         _coachName = coach?['fullName'] as String?;
         _coachTitle = coach?['title'] as String?;
         _academy = coach?['academy'] as String?;
         _isVerified = (coach?['isVerified'] as bool?) ?? false;
+        _playerCount = (counts?['players'] as num?)?.toInt() ?? 0;
+        _leagueCount = (counts?['leagues'] as num?)?.toInt() ?? 0;
       });
     } catch (_) {
       // Offline / not logged in: keep mock visuals.
@@ -656,21 +661,24 @@ class _CoachHomeTabState extends State<_CoachHomeTab> {
                   size: 36, color: Colors.white38),
             ),
             const SizedBox(height: 12),
-            const Text('Coach Suneeth',
-                style: TextStyle(
+            Text(_coachName ?? 'Coach',
+                style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.w800)),
-            const Text('Head Coach • Falcons Cricket Academy',
-                style: TextStyle(
+            Text(
+                [
+                  if ((_coachTitle ?? '').isNotEmpty) _coachTitle,
+                  if ((_academy ?? '').isNotEmpty) _academy,
+                ].join(' • '),
+                style: const TextStyle(
                     color: Colors.white54, fontSize: 13)),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: const [
-                _StatChip(label: 'Players', value: '24'),
-                _StatChip(label: 'Matches', value: '12'),
-                _StatChip(label: 'Win Rate', value: '75%'),
+              children: [
+                _StatChip(label: 'Players', value: '$_playerCount'),
+                _StatChip(label: 'Leagues', value: '$_leagueCount'),
               ],
             ),
             const SizedBox(height: 16),
@@ -693,72 +701,63 @@ class _CoachNotificationScreen extends StatefulWidget {
 
 class _CoachNotificationScreenState
     extends State<_CoachNotificationScreen> {
-  late List<Map<String, dynamic>> _notifications = [
-    {
-      'icon': Icons.person_add,
-      'color': const Color(0xFF00C853),
-      'title': 'New Player Joined!',
-      'subtitle': 'Rahul Sharma joined Alpha Warriors',
-      'time': '2m ago',
-      'read': false,
-    },
-    {
-      'icon': Icons.emoji_events,
-      'color': const Color(0xFFFFB300),
-      'title': 'Points Updated',
-      'subtitle': 'Match points uploaded successfully',
-      'time': '15m ago',
-      'read': false,
-    },
-    {
-      'icon': Icons.sports_cricket,
-      'color': const Color(0xFF1A6BFF),
-      'title': 'Match Scheduled',
-      'subtitle': 'Alpha Warriors vs Royal Challengers — 24 May',
-      'time': '1h ago',
-      'read': false,
-    },
-    {
-      'icon': Icons.shield,
-      'color': const Color(0xFF00C853),
-      'title': 'League Created',
-      'subtitle': 'Under16 Pro League is now live!',
-      'time': '2h ago',
-      'read': true,
-    },
-    {
-      'icon': Icons.star,
-      'color': const Color(0xFFFFB300),
-      'title': 'Certification Update',
-      'subtitle': 'Your coach certification is under review',
-      'time': '3h ago',
-      'read': true,
-    },
-    {
-      'icon': Icons.people,
-      'color': const Color(0xFF1A6BFF),
-      'title': 'Team Update',
-      'subtitle': 'Falcons FC roster has been updated',
-      'time': '5h ago',
-      'read': true,
-    },
-    {
-      'icon': Icons.bar_chart,
-      'color': const Color(0xFF00C853),
-      'title': 'Performance Report',
-      'subtitle': 'Weekly performance report is ready',
-      'time': '1d ago',
-      'read': true,
-    },
-    {
-      'icon': Icons.emoji_events,
-      'color': const Color(0xFFFFB300),
-      'title': 'Match Result',
-      'subtitle': 'Alpha Warriors won vs Thunder Strikers 🎉',
-      'time': '1d ago',
-      'read': true,
-    },
-  ];
+  List<Map<String, dynamic>> _notifications = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  static ({IconData icon, Color color}) _styleFor(String type) {
+    switch (type) {
+      case 'QO_POINTS':
+        return (icon: Icons.emoji_events, color: const Color(0xFFFFB300));
+      case 'LEAGUE_UPDATE':
+        return (icon: Icons.person_add, color: const Color(0xFF00C853));
+      case 'MATCH':
+        return (icon: Icons.sports_cricket, color: const Color(0xFF1A6BFF));
+      case 'ACHIEVEMENT':
+        return (icon: Icons.star, color: const Color(0xFFFFB300));
+      default:
+        return (icon: Icons.notifications, color: const Color(0xFF7B2FFF));
+    }
+  }
+
+  static String _relativeTime(String? iso) {
+    final dt = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return '';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.notifications();
+      if (!mounted) return;
+      setState(() {
+        _notifications = data.cast<Map<String, dynamic>>().map((n) {
+          final st = _styleFor(n['type'] as String? ?? '');
+          return {
+            'id': n['id'],
+            'icon': st.icon,
+            'color': st.color,
+            'title': n['title'] ?? '',
+            'subtitle': n['body'] ?? '',
+            'time': _relativeTime(n['createdAt'] as String?),
+            'read': n['isRead'] == true,
+          };
+        }).toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -812,6 +811,7 @@ class _CoachNotificationScreenState
                           .map((n) => {...n, 'read': true})
                           .toList();
                     });
+                    SportyQoApi.markNotificationsRead();
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('All marked as read ✅'),
@@ -833,7 +833,16 @@ class _CoachNotificationScreenState
 
             // ── Notification List ──
             Expanded(
-              child: ListView.separated(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                          color: Color(0xFF00C853)))
+                  : _notifications.isEmpty
+                      ? const Center(
+                          child: Text('No notifications yet',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 14)))
+                      : ListView.separated(
                 padding:
                 const EdgeInsets.symmetric(horizontal: 20),
                 itemCount: _notifications.length,
@@ -842,12 +851,18 @@ class _CoachNotificationScreenState
                 itemBuilder: (context, i) {
                   final n = _notifications[i];
                   return GestureDetector(
-                    onTap: () => setState(() {
-                      _notifications[i] = {
-                        ..._notifications[i],
-                        'read': true,
-                      };
-                    }),
+                    onTap: () {
+                      setState(() {
+                        _notifications[i] = {
+                          ..._notifications[i],
+                          'read': true,
+                        };
+                      });
+                      final id = _notifications[i]['id'] as String?;
+                      if (id != null) {
+                        SportyQoApi.markNotificationsRead(ids: [id]);
+                      }
+                    },
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(

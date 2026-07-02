@@ -141,6 +141,31 @@ class SportyQoApi {
     return await _api.get('/coach/certifications') as List<dynamic>;
   }
 
+  /// Existing stat lines of a match (prefills the coach's edit table).
+  static Future<List<dynamic>> matchStats(String matchId,
+      {String? teamId}) async {
+    return await _api.get('/matches/$matchId/stats',
+        query: teamId == null ? null : {'teamId': teamId}) as List<dynamic>;
+  }
+
+  /// Coach saves a player's stat line for a match. Applies the Qo delta
+  /// to the player's profile server-side and notifies the player.
+  static Future<Map<String, dynamic>> savePlayerStats({
+    required String teamId,
+    required String playerId,
+    required String matchId,
+    required Map<String, dynamic> stats,
+    required int qoPoints,
+    double? rating,
+  }) async {
+    return await _api.patch('/teams/$teamId/players/$playerId/stats', body: {
+      'matchId': matchId,
+      'stats': stats,
+      'qoPoints': qoPoints,
+      if (rating != null) 'rating': rating,
+    }) as Map<String, dynamic>;
+  }
+
   /// Coach records a match outcome (feeds standings).
   static Future<Map<String, dynamic>> setMatchResult(
     String matchId, {
