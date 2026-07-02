@@ -99,6 +99,44 @@ class ApiClient {
     return _send('PATCH', path, body: body, auth: auth);
   }
 
+  /// Multipart POST (league creation with logos, avatar upload, documents).
+  /// [fields] are plain form fields; [files] maps field name -> file path.
+  Future<dynamic> postMultipart(String path,
+      {Map<String, String> fields = const {},
+      Map<String, String> files = const {}}) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final req = http.MultipartRequest('POST', uri);
+    if (_accessToken != null) {
+      req.headers['Authorization'] = 'Bearer $_accessToken';
+    }
+    req.fields.addAll(fields);
+    for (final e in files.entries) {
+      req.files.add(await http.MultipartFile.fromPath(e.key, e.value));
+    }
+    http.Response res;
+    try {
+      res = await http.Response.fromStream(
+          await req.send().timeout(const Duration(seconds: 60)));
+    } catch (_) {
+      throw ApiException(0, 'NETWORK',
+          'Could not reach the server. Check your connection and API_BASE_URL.');
+    }
+    final Map<String, dynamic> json;
+    try {
+      json = jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (_) {
+      throw ApiException(res.statusCode, 'INTERNAL', 'Unexpected server response.');
+    }
+    if (json['success'] == true) return json['data'];
+    final err = (json['error'] as Map<String, dynamic>?) ?? {};
+    throw ApiException(
+      res.statusCode,
+      (err['code'] as String?) ?? 'INTERNAL',
+      (err['message'] as String?) ?? 'Something went wrong.',
+      err['details'] as List<dynamic>?,
+    );
+  }
+
   Future<dynamic> _send(String method, String path,
       {Object? body,
       Map<String, String>? query,

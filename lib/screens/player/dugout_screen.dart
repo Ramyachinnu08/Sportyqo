@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sportyqo_api.dart';
 
 class DugoutScreen extends StatefulWidget {
   const DugoutScreen({super.key});
@@ -23,136 +24,78 @@ class _DugoutScreenState extends State<DugoutScreen> {
     'Athletics',
   ];
 
-  final List<Map<String, dynamic>> _players = [
-    {
-      'name': 'Aarav Mehta',
-      'qoScore': 92,
-      'sport': 'Cricket',
-      'age': 'U16',
-      'achievement': 'Top Scorer • 523 Runs',
-      'academy': 'St. Xavier\'s School',
-      'color1': const Color(0xFF1A3A2A),
-      'color2': const Color(0xFF0A1A12),
-      'emoji': '🏏',
-      'filter': 'Cricket',
-      'verified': true,
-      'rating': 4.8,
-      'followers': '2.1K',
-      'matches': 24,
-    },
-    {
-      'name': 'Rohan Sharma',
-      'qoScore': 89,
-      'sport': 'Football',
-      'age': 'U16',
-      'achievement': 'Top Scorer • 28 Goals',
-      'academy': 'Delhi FC Academy',
-      'color1': const Color(0xFF1A2A3A),
-      'color2': const Color(0xFF0A1020),
-      'emoji': '⚽',
-      'filter': 'Football',
-      'verified': true,
-      'rating': 4.6,
-      'followers': '1.8K',
-      'matches': 18,
-    },
-    {
-      'name': 'Kabir Verma',
-      'qoScore': 86,
-      'sport': 'Cricket',
-      'age': 'U16',
-      'achievement': 'Top Wicket Taker • 32 Wickets',
-      'academy': 'Mumbai Cricket Academy',
-      'color1': const Color(0xFF2A1A1A),
-      'color2': const Color(0xFF140A0A),
-      'emoji': '🎯',
-      'filter': 'Cricket',
-      'verified': true,
-      'rating': 4.5,
-      'followers': '1.2K',
-      'matches': 20,
-    },
-    {
-      'name': 'Vihaan Kapoor',
-      'qoScore': 84,
-      'sport': 'Basketball',
-      'age': 'U16',
-      'achievement': 'Top Scorer • 412 Points',
-      'academy': 'DPS Sports Club',
-      'color1': const Color(0xFF2A2A1A),
-      'color2': const Color(0xFF141408),
-      'emoji': '🏀',
-      'filter': 'Basketball',
-      'verified': false,
-      'rating': 4.3,
-      'followers': '980',
-      'matches': 15,
-    },
-    {
-      'name': 'Ishaan Malhotra',
-      'qoScore': 82,
-      'sport': 'Badminton',
-      'age': 'U16',
-      'achievement': 'Top Performer • 5 Titles',
-      'academy': 'Gachibowli Badminton Academy',
-      'color1': const Color(0xFF1A1A2A),
-      'color2': const Color(0xFF0A0A14),
-      'emoji': '🏸',
-      'filter': 'Badminton',
-      'verified': true,
-      'rating': 4.4,
-      'followers': '1.5K',
-      'matches': 22,
-    },
-    {
-      'name': 'Arjun Nair',
-      'qoScore': 80,
-      'sport': 'Football',
-      'age': 'U16',
-      'achievement': 'Top Assist Provider • 16 Assists',
-      'academy': 'Kerala Blasters Academy',
-      'color1': const Color(0xFF2A1A2A),
-      'color2': const Color(0xFF140A14),
-      'emoji': '⚽',
-      'filter': 'Football',
-      'verified': false,
-      'rating': 4.2,
-      'followers': '875',
-      'matches': 16,
-    },
-    {
-      'name': 'Dev Tiwari',
-      'qoScore': 78,
-      'sport': 'Athletics',
-      'age': 'U16',
-      'achievement': 'Gold Medalist • 100m Sprint',
-      'academy': 'SAI Training Centre',
-      'color1': const Color(0xFF1A2A1A),
-      'color2': const Color(0xFF0A140A),
-      'emoji': '🏃',
-      'filter': 'Athletics',
-      'verified': true,
-      'rating': 4.1,
-      'followers': '650',
-      'matches': 10,
-    },
-    {
-      'name': 'Sai Krishnan',
-      'qoScore': 75,
-      'sport': 'Basketball',
-      'age': 'U16',
-      'achievement': 'Best Defender • 180 Blocks',
-      'academy': 'Hyderabad Basketball Club',
-      'color1': const Color(0xFF2A1A1A),
-      'color2': const Color(0xFF140A0A),
-      'emoji': '🏀',
-      'filter': 'Basketball',
-      'verified': false,
-      'rating': 4.0,
-      'followers': '540',
-      'matches': 12,
-    },
-  ];
+  List<Map<String, dynamic>> _players = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  static ({Color c1, Color c2, String emoji}) _sportStyle(String? sport) {
+    switch (sport) {
+      case 'Cricket':
+        return (c1: const Color(0xFF1A3A2A), c2: const Color(0xFF0A1A12), emoji: '🏏');
+      case 'Football':
+        return (c1: const Color(0xFF1A2A3A), c2: const Color(0xFF0A1020), emoji: '⚽');
+      case 'Basketball':
+        return (c1: const Color(0xFF2A2A1A), c2: const Color(0xFF141408), emoji: '🏀');
+      case 'Badminton':
+        return (c1: const Color(0xFF1A1A2A), c2: const Color(0xFF0A0A14), emoji: '🏸');
+      case 'Volleyball':
+        return (c1: const Color(0xFF2A1A2A), c2: const Color(0xFF140A14), emoji: '🏐');
+      case 'Tennis':
+        return (c1: const Color(0xFF1A2A1A), c2: const Color(0xFF0A140A), emoji: '🎾');
+      case 'Hockey':
+        return (c1: const Color(0xFF2A1A1A), c2: const Color(0xFF140A0A), emoji: '🏑');
+      case 'Kabaddi':
+        return (c1: const Color(0xFF2A231A), c2: const Color(0xFF14100A), emoji: '🤼');
+      default:
+        return (c1: const Color(0xFF1A1A2A), c2: const Color(0xFF0A0A14), emoji: '🏅');
+    }
+  }
+
+  static String _fmtCount(int n) {
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
+    return '$n';
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.discoverPlayers();
+      if (!mounted) return;
+      setState(() {
+        _players = data.cast<Map<String, dynamic>>().map((r) {
+          final sport = r['sport'] as String?;
+          final st = _sportStyle(sport);
+          final matches = (r['matchesPlayed'] as num?)?.toInt() ?? 0;
+          return {
+            'id': r['id'],
+            'name': r['fullName'] ?? '',
+            'qoScore': (r['qoScore'] as num?)?.toInt() ?? 0,
+            'sport': sport ?? 'Sport',
+            'age': r['playerCode'] ?? '',
+            'achievement':
+                '$matches ${matches == 1 ? 'match' : 'matches'} played',
+            'academy': (r['academy'] as String?)?.isNotEmpty == true
+                ? r['academy'] as String
+                : (r['location'] as String? ?? ''),
+            'color1': st.c1,
+            'color2': st.c2,
+            'emoji': (r['sportEmoji'] as String?) ?? st.emoji,
+            'filter': sport ?? 'All',
+            'verified': r['verified'] == true,
+            'followers': _fmtCount((r['followers'] as num?)?.toInt() ?? 0),
+            'matches': matches,
+          };
+        }).toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   List<Map<String, dynamic>> get _filtered {
     var list = _selectedFilter == 'All'
@@ -402,15 +345,23 @@ class _DugoutScreenState extends State<DugoutScreen> {
 
             // ── Player List ──
             Expanded(
-              child: _filtered.isEmpty
+              child: _loading
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(color: AppColors.primary))
+                  : _filtered.isEmpty
                   ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Text('🔍', style: TextStyle(fontSize: 48)),
                     const SizedBox(height: 12),
-                    Text('No players found for "$_searchQuery"',
-                        style: const TextStyle(color: Colors.white38, fontSize: 14)),
+                    Text(
+                        _searchQuery.isEmpty
+                            ? 'No players yet'
+                            : 'No players found for "$_searchQuery"',
+                        style: const TextStyle(
+                            color: Colors.white38, fontSize: 14)),
                     const SizedBox(height: 8),
                     GestureDetector(
                       onTap: () {
@@ -687,7 +638,7 @@ class _PlayerProfileScreenState extends State<_PlayerProfileScreen> {
                       Container(height: 40, width: 1, color: Colors.white10),
                       _StatCol(label: 'Matches', value: '${p['matches']}'),
                       Container(height: 40, width: 1, color: Colors.white10),
-                      _StatCol(label: 'Rating', value: '⭐ ${p['rating']}'),
+                      _StatCol(label: 'Qo Score', value: '${p['qoScore']}'),
                     ],
                   ),
                 ),

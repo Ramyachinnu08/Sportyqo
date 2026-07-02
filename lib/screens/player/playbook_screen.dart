@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sportyqo_api.dart';
 
 class PlaybookScreen extends StatefulWidget {
   const PlaybookScreen({super.key});
@@ -12,41 +13,81 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
   int _tabIndex = 0;
   bool _isFollowing = false;
 
-  final List<Map<String, dynamic>> _playingVideos = [
-    {'title': 'Century vs DSO Academy', 'subtitle': '125 Runs', 'date': '12 May 2025', 'emoji': '🏏', 'color': const Color(0xFF1A3A2A), 'duration': '2:34'},
-    {'title': 'Match Winning Knock', 'subtitle': '78 Runs', 'date': '5 May 2025', 'emoji': '🏏', 'color': const Color(0xFF1A2A3A), 'duration': '1:45'},
-    {'title': 'Bowling Spell', 'subtitle': '4/18', 'date': '28 Apr 2025', 'emoji': '🎯', 'color': const Color(0xFF2A1A1A), 'duration': '3:12'},
-    {'title': 'Brilliant Catch', 'subtitle': 'vs Mumbai Colts', 'date': '20 Apr 2025', 'emoji': '🧤', 'color': const Color(0xFF1A1A2A), 'duration': '0:45'},
-  ];
+  // Content comes from GET /playbook (items shared with the player's
+  // teams/leagues by their coach), bucketed by kind per tab.
+  final Map<String, List<Map<String, dynamic>>> _byKind = {
+    'VIDEO': [],
+    'DRILL': [],
+    'STRATEGY': [],
+    'NOTE': [],
+  };
+  bool _loading = true;
 
-  final List<Map<String, dynamic>> _certificatesVideos = [
-    {'title': 'BCCI Level 2 Certificate', 'subtitle': 'Certified', 'date': '10 Jan 2025', 'emoji': '🎓', 'color': const Color(0xFF1A2A3A), 'duration': '1:20'},
-    {'title': 'Sports Excellence Award', 'subtitle': 'State Level', 'date': '15 Dec 2024', 'emoji': '🏅', 'color': const Color(0xFF2A1A1A), 'duration': '2:10'},
-    {'title': 'District Championship', 'subtitle': 'Gold Medal', 'date': '20 Nov 2024', 'emoji': '🥇', 'color': const Color(0xFF1A1A2A), 'duration': '1:55'},
-    {'title': 'Academy Certificate', 'subtitle': 'Falcons FC', 'date': '01 Oct 2024', 'emoji': '📜', 'color': const Color(0xFF2A2A1A), 'duration': '0:58'},
-  ];
+  static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  final List<Map<String, dynamic>> _teamVideos = [
-    {'title': 'Falcons FC Team', 'subtitle': 'U16 Division', 'date': '2024-25', 'emoji': '🦅', 'color': const Color(0xFF1A1A2A), 'duration': '3:45'},
-    {'title': 'Alpha Warriors', 'subtitle': 'U16 Division', 'date': '2023-24', 'emoji': '⚔️', 'color': const Color(0xFF2A1A2A), 'duration': '2:30'},
-    {'title': 'Team Practice', 'subtitle': 'Morning Session', 'date': '15 May 2025', 'emoji': '👥', 'color': const Color(0xFF1A2A1A), 'duration': '4:12'},
-    {'title': 'Match Day Prep', 'subtitle': 'vs Royal Strikers', 'date': '10 May 2025', 'emoji': '⚽', 'color': const Color(0xFF2A2A1A), 'duration': '1:30'},
-  ];
+  static ({String emoji, Color color}) _kindStyle(String kind) {
+    switch (kind) {
+      case 'VIDEO':
+        return (emoji: '🎬', color: const Color(0xFF1A2A3A));
+      case 'DRILL':
+        return (emoji: '🏃', color: const Color(0xFF1A3A2A));
+      case 'STRATEGY':
+        return (emoji: '🧠', color: const Color(0xFF2A1A2A));
+      default:
+        return (emoji: '📝', color: const Color(0xFF2A2A1A));
+    }
+  }
 
-  final List<Map<String, dynamic>> _trophiesVideos = [
-    {'title': 'Best Batsman Trophy', 'subtitle': 'DSO Academy', 'date': '12 May 2025', 'emoji': '🏆', 'color': const Color(0xFF2A1A2A), 'duration': '1:15'},
-    {'title': 'MVP Award', 'subtitle': 'Inter School', 'date': '5 May 2025', 'emoji': '🥇', 'color': const Color(0xFF1A2A2A), 'duration': '0:55'},
-    {'title': 'Tournament Winners', 'subtitle': 'U16 League', 'date': '28 Apr 2025', 'emoji': '🎖️', 'color': const Color(0xFF2A1A1A), 'duration': '2:20'},
-    {'title': 'Player of the Year', 'subtitle': '2024 Season', 'date': '01 Jan 2025', 'emoji': '⭐', 'color': const Color(0xFF1A1A3A), 'duration': '3:00'},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.playbook();
+      if (!mounted) return;
+      setState(() {
+        for (final k in _byKind.keys) {
+          _byKind[k] = [];
+        }
+        for (final raw in data.cast<Map<String, dynamic>>()) {
+          final kind = (raw['kind'] as String? ?? 'NOTE').toUpperCase();
+          final st = _kindStyle(kind);
+          final dt = DateTime.tryParse(raw['createdAt'] as String? ?? '')
+              ?.toLocal();
+          final tags = (raw['tags'] as List<dynamic>? ?? [])
+              .map((t) => '$t')
+              .toList();
+          (_byKind[kind] ?? _byKind['NOTE']!).add({
+            'title': raw['title'] ?? '',
+            'subtitle': (raw['description'] as String?)?.isNotEmpty == true
+                ? raw['description'] as String
+                : tags.join(' • '),
+            'date': dt == null
+                ? ''
+                : '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}',
+            'emoji': st.emoji,
+            'color': st.color,
+            'duration': '',
+            'mediaUrl': raw['mediaUrl'],
+          });
+        }
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   List<Map<String, dynamic>> get _currentContent {
     switch (_tabIndex) {
-      case 0: return _playingVideos;
-      case 1: return _certificatesVideos;
-      case 2: return _teamVideos;
-      case 3: return _trophiesVideos;
-      default: return _playingVideos;
+      case 0: return _byKind['VIDEO']!;
+      case 1: return _byKind['DRILL']!;
+      case 2: return _byKind['STRATEGY']!;
+      case 3: return _byKind['NOTE']!;
+      default: return _byKind['VIDEO']!;
     }
   }
 
@@ -297,23 +338,23 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(children: [
                   _PlaybookTab(
-                      icon: Icons.directions_run,
-                      label: 'Playing',
+                      icon: Icons.play_circle_outline,
+                      label: 'Videos',
                       isActive: _tabIndex == 0,
                       onTap: () => setState(() => _tabIndex = 0)),
                   _PlaybookTab(
-                      icon: Icons.workspace_premium_outlined,
-                      label: 'Certificates',
+                      icon: Icons.directions_run,
+                      label: 'Drills',
                       isActive: _tabIndex == 1,
                       onTap: () => setState(() => _tabIndex = 1)),
                   _PlaybookTab(
-                      icon: Icons.people_outline,
-                      label: 'Team',
+                      icon: Icons.psychology_outlined,
+                      label: 'Strategy',
                       isActive: _tabIndex == 2,
                       onTap: () => setState(() => _tabIndex = 2)),
                   _PlaybookTab(
-                      icon: Icons.emoji_events_outlined,
-                      label: 'Trophies',
+                      icon: Icons.sticky_note_2_outlined,
+                      label: 'Notes',
                       isActive: _tabIndex == 3,
                       onTap: () => setState(() => _tabIndex = 3)),
                 ]),
@@ -329,7 +370,25 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
               // ── Content Grid ──
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: GridView.builder(
+                child: _loading
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 60),
+                        child: Center(
+                            child: CircularProgressIndicator(
+                                color: AppColors.primary)),
+                      )
+                    : _currentContent.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 60),
+                            child: Center(
+                                child: Text(
+                                    'Nothing here yet — content shared by your coach will appear here',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 13))),
+                          )
+                        : GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(

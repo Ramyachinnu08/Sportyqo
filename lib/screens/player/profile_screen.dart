@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../theme/app_theme.dart';
 import '../auth/choose_role_screen.dart';
+import '../../services/sportyqo_api.dart';
+import '../../services/auth_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String? playerId;
@@ -16,6 +18,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isFollowing = false;
   bool _darkMode = true;
   bool _notificationsOn = true;
+
+  Map<String, dynamic>? _profile;
+  List<Map<String, dynamic>> _academyHistory = [];
+  List<Map<String, dynamic>> _recommendations = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.playerProfile();
+      if (!mounted) return;
+      setState(() {
+        _profile = data;
+        _academyHistory = (data['academyHistory'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>();
+        _recommendations = (data['recommendations'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>();
+      });
+    } catch (_) {
+      // keep placeholders when offline
+    }
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return '?';
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return (parts.first[0] + parts.last[0]).toUpperCase();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,16 +106,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(children: [
-                                const Text('Aarav Mehta',
-                                    style: TextStyle(
+                                Text(_profile?['fullName'] as String? ?? '—',
+                                    style: const TextStyle(
                                         color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
                                 const SizedBox(width: 6),
-                                const Icon(Icons.verified, color: AppColors.primary, size: 16),
+                                if (_profile?['isVerified'] == true)
+                                  const Icon(Icons.verified, color: AppColors.primary, size: 16),
                               ]),
-                              if (widget.playerId != null) ...[
+                              if (_profile?['playerId'] != null ||
+                                  widget.playerId != null) ...[
                                 const SizedBox(height: 3),
                                 Text(
-                                  widget.playerId!,
+                                  _profile?['playerId'] as String? ??
+                                      widget.playerId!,
                                   style: const TextStyle(
                                     color: Color(0xFF00C853),
                                     fontSize: 13,
@@ -90,34 +128,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                               ],
                               const SizedBox(height: 4),
-                              Row(children: const [
-                                Text('Cricket',
-                                    style: TextStyle(color: Colors.white60, fontSize: 13)),
-                                Text(' • ', style: TextStyle(color: Colors.white38, fontSize: 13)),
-                                Text('Batter',
-                                    style: TextStyle(color: Colors.white60, fontSize: 13)),
+                              Row(children: [
+                                Text(
+                                    (_profile?['sport']
+                                            as Map<String, dynamic>?)?['name']
+                                            as String? ??
+                                        'Sport',
+                                    style: const TextStyle(
+                                        color: Colors.white60, fontSize: 13)),
+                                if ((_profile?['club'] as String?)
+                                        ?.isNotEmpty ==
+                                    true) ...[
+                                  const Text(' • ',
+                                      style: TextStyle(
+                                          color: Colors.white38,
+                                          fontSize: 13)),
+                                  Text(_profile!['club'] as String,
+                                      style: const TextStyle(
+                                          color: Colors.white60,
+                                          fontSize: 13)),
+                                ],
                               ]),
                               const SizedBox(height: 8),
-                              Row(children: const [
-                                Icon(Icons.location_on_outlined, color: Colors.white38, size: 13),
-                                SizedBox(width: 4),
-                                Text('Mumbai, India',
-                                    style: TextStyle(color: Colors.white54, fontSize: 12)),
-                              ]),
+                              if ((_profile?['location'] as String?)
+                                      ?.isNotEmpty ==
+                                  true)
+                                Row(children: [
+                                  const Icon(Icons.location_on_outlined,
+                                      color: Colors.white38, size: 13),
+                                  const SizedBox(width: 4),
+                                  Text(_profile!['location'] as String,
+                                      style: const TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 12)),
+                                ]),
                               const SizedBox(height: 3),
-                              Row(children: const [
-                                Icon(Icons.school_outlined, color: Colors.white38, size: 13),
-                                SizedBox(width: 4),
-                                Text('St. Xavier\'s School',
-                                    style: TextStyle(color: Colors.white54, fontSize: 12)),
-                              ]),
+                              if ((_profile?['schoolAcademy'] as String?)
+                                      ?.isNotEmpty ==
+                                  true)
+                                Row(children: [
+                                  const Icon(Icons.school_outlined,
+                                      color: Colors.white38, size: 13),
+                                  const SizedBox(width: 4),
+                                  Text(_profile!['schoolAcademy'] as String,
+                                      style: const TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 12)),
+                                ]),
                               const SizedBox(height: 3),
-                              Row(children: const [
-                                Icon(Icons.shield_outlined, color: Colors.white38, size: 13),
-                                SizedBox(width: 4),
-                                Text('Falcons Cricket Club',
-                                    style: TextStyle(color: Colors.white54, fontSize: 12)),
-                              ]),
+                              if ((_profile?['club'] as String?)
+                                      ?.isNotEmpty ==
+                                  true)
+                                Row(children: [
+                                  const Icon(Icons.shield_outlined,
+                                      color: Colors.white38, size: 13),
+                                  const SizedBox(width: 4),
+                                  Text(_profile!['club'] as String,
+                                      style: const TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 12)),
+                                ]),
                             ],
                           ),
                         ),
@@ -155,30 +225,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
                           ]),
                           const SizedBox(height: 14),
-                          _AcademyTile(
-                            logo: '🦅',
-                            logoColor: const Color(0xFF1A3A5C),
-                            name: 'Falcons Cricket Academy',
-                            year: '2023 – Present',
-                            location: 'Mumbai, India',
-                          ),
-                          const Divider(color: Colors.white10, height: 20),
-                          _AcademyTile(
-                            logo: '🏏',
-                            logoColor: const Color(0xFF1A2A4A),
-                            name: 'Mumbai Colts Academy',
-                            year: '2020 – 2023',
-                            location: 'Mumbai, India',
-                          ),
-                          const Divider(color: Colors.white10, height: 20),
-                          _AcademyTile(
-                            logo: 'U16',
-                            logoColor: const Color(0xFF2A1A4A),
-                            name: 'Under16 Pro League',
-                            year: '2024 – Present',
-                            location: 'Mumbai, India',
-                            isText: true,
-                          ),
+                          if (_academyHistory.isEmpty)
+                            const Text('No academy history added yet',
+                                style: TextStyle(
+                                    color: Colors.white38, fontSize: 13))
+                          else
+                            ...List.generate(_academyHistory.length, (i) {
+                              final a = _academyHistory[i];
+                              final startYear = a['startYear']?.toString() ?? '';
+                              final endYear =
+                                  a['endYear']?.toString() ?? 'Present';
+                              return Column(children: [
+                                if (i > 0)
+                                  const Divider(
+                                      color: Colors.white10, height: 20),
+                                _AcademyTile(
+                                  logo: _initials(
+                                      a['academy'] as String? ?? '?'),
+                                  logoColor: const Color(0xFF1A3A5C),
+                                  name: a['academy'] as String? ?? '',
+                                  year: '$startYear – $endYear',
+                                  location: a['role'] as String? ?? '',
+                                  isText: true,
+                                ),
+                              ]);
+                            }),
                         ],
                       ),
                     ),
@@ -204,31 +275,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
                           ]),
                           const SizedBox(height: 14),
-                          _RecommendationTile(
-                            initials: 'RS',
-                            color: const Color(0xFF7B2FFF),
-                            name: 'Rahul Sharma',
-                            role: 'Head Coach • Falcons Cricket Academy',
-                            quote:
-                            'Aarav is one of the most disciplined players I\'ve worked with. Strong work ethic and excellent game awareness.',
-                          ),
-                          const Divider(color: Colors.white10, height: 20),
-                          _RecommendationTile(
-                            initials: 'VN',
-                            color: const Color(0xFF1A5C3A),
-                            name: 'Vivek Nair',
-                            role: 'Performance Coach',
-                            quote:
-                            'A technically gifted batter with leadership qualities and a hunger to improve.',
-                          ),
-                          const Divider(color: Colors.white10, height: 20),
-                          _RecommendationTile(
-                            initials: 'JM',
-                            color: const Color(0xFF3A2A1A),
-                            name: 'John Matthews',
-                            role: 'Former Coach',
-                            quote: 'A Consistent performer and a great teammate.',
-                          ),
+                          if (_recommendations.isEmpty)
+                            const Text('No recommendations yet',
+                                style: TextStyle(
+                                    color: Colors.white38, fontSize: 13))
+                          else
+                            ...List.generate(_recommendations.length, (i) {
+                              final r = _recommendations[i];
+                              final coach =
+                                  r['coachName'] as String? ?? 'Coach';
+                              return Column(children: [
+                                if (i > 0)
+                                  const Divider(
+                                      color: Colors.white10, height: 20),
+                                _RecommendationTile(
+                                  initials: _initials(coach),
+                                  color: const Color(0xFF7B2FFF),
+                                  name: coach,
+                                  role: r['coachTitle'] as String? ?? 'Coach',
+                                  quote: r['text'] as String? ?? '',
+                                ),
+                              ]);
+                            }),
                         ],
                       ),
                     ),
@@ -257,8 +325,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(_isFollowing
-                                  ? 'You are now following Aarav Mehta'
-                                  : 'You unfollowed Aarav Mehta'),
+                                  ? 'You are now following ${_profile?['fullName'] ?? 'this player'}'
+                                  : 'You unfollowed ${_profile?['fullName'] ?? 'this player'}'),
                               backgroundColor: AppColors.primary,
                               duration: const Duration(seconds: 2),
                             ),
@@ -297,10 +365,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: InkWell(
                         onTap: () {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Opening chat with Aarav Mehta...'),
+                            SnackBar(
+                              content: Text(
+                                  'Opening chat with ${_profile?['fullName'] ?? 'player'}...'),
                               backgroundColor: AppColors.primary,
-                              duration: Duration(seconds: 2),
+                              duration: const Duration(seconds: 2),
                             ),
                           );
                         },
@@ -329,8 +398,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: InkWell(
                         onTap: () {
                           Share.share(
-                            'Check out Aarav Mehta\'s profile on SportyQo! 🏏\nhttps://sportyqo.app/profile/aarav-mehta',
-                            subject: 'Aarav Mehta - SportyQo Profile',
+                            'Check out ${_profile?['fullName'] ?? 'my'} profile on SportyQo! ${_profile?['playerId'] ?? ''}',
+                            subject: '${_profile?['fullName'] ?? 'Player'} - SportyQo Profile',
                           );
                         },
                         child: Padding(
@@ -490,6 +559,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(dialogContext);
+              AuthService.logout();
               Future.microtask(() {
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (_) => const ChooseRoleScreen()),

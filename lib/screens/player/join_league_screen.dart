@@ -24,9 +24,14 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
     try {
       final result = await SportyQoApi.joinLeague(_code.join());
       if (!mounted) return;
-      _joinedLeagueName =
-          (result['league'] as Map<String, dynamic>?)?['name'] as String?;
-      setState(() => _step = 1);
+      final league = result['league'] as Map<String, dynamic>?;
+      _joinedLeagueName = league?['name'] as String?;
+      _joinedLeagueId = league?['id'] as String?;
+      setState(() {
+        _step = 1;
+        _loadingTeams = true;
+      });
+      await _loadTeams();
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -40,56 +45,63 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
     }
   }
 
-  final List<Map<String, dynamic>> _teams = [
-    {
-      'name': 'Falcons FC',
-      'division': 'U16 Division',
-      'players': 28,
-      'emoji': '🦅',
-      'roster': [
-        {'name': 'Aarav Mehta', 'position': 'Striker', 'qoScore': 87},
-        {'name': 'Rohan Sharma', 'position': 'Midfielder', 'qoScore': 82},
-        {'name': 'Vikram Singh', 'position': 'Defender', 'qoScore': 79},
-        {'name': 'Karan Patel', 'position': 'Goalkeeper', 'qoScore': 85},
-        {'name': 'Dev Kapoor', 'position': 'Winger', 'qoScore': 76},
-      ],
-    },
-    {
-      'name': 'Alpha Warriors',
-      'division': 'U16 Division',
-      'players': 26,
-      'emoji': '⚔️',
-      'roster': [
-        {'name': 'Arjun Reddy', 'position': 'Striker', 'qoScore': 90},
-        {'name': 'Sahil Khan', 'position': 'Midfielder', 'qoScore': 84},
-        {'name': 'Yash Verma', 'position': 'Defender', 'qoScore': 78},
-        {'name': 'Aditya Nair', 'position': 'Goalkeeper', 'qoScore': 81},
-      ],
-    },
-    {
-      'name': 'Thunder Strikers',
-      'division': 'U16 Division',
-      'players': 24,
-      'emoji': '⚡',
-      'roster': [
-        {'name': 'Ishaan Gupta', 'position': 'Striker', 'qoScore': 88},
-        {'name': 'Rahul Joshi', 'position': 'Midfielder', 'qoScore': 80},
-        {'name': 'Aryan Malhotra', 'position': 'Defender', 'qoScore': 75},
-      ],
-    },
-    {
-      'name': 'Green Field United',
-      'division': 'U16 Division',
-      'players': 30,
-      'emoji': '⚽',
-      'roster': [
-        {'name': 'Pranav Iyer', 'position': 'Striker', 'qoScore': 86},
-        {'name': 'Kabir Das', 'position': 'Midfielder', 'qoScore': 83},
-        {'name': 'Veer Choudhary', 'position': 'Defender', 'qoScore': 77},
-        {'name': 'Aniket Rao', 'position': 'Goalkeeper', 'qoScore': 79},
-      ],
-    },
-  ];
+  Future<void> _loadTeams() async {
+    if (_joinedLeagueId == null) {
+      setState(() => _loadingTeams = false);
+      return;
+    }
+    try {
+      final results = await Future.wait([
+        SportyQoApi.leagueTeams(_joinedLeagueId!),
+        SportyQoApi.leagueDetails(_joinedLeagueId!),
+      ]);
+      if (!mounted) return;
+      final teams = results[0] as List<dynamic>;
+      final details = results[1] as Map<String, dynamic>;
+      setState(() {
+        _leagueSeason = details['season'] as String?;
+        _teams = teams
+            .cast<Map<String, dynamic>>()
+            .map((t) => {
+                  'id': t['id'],
+                  'name': t['name'] ?? '',
+                  'emoji': t['icon'] ?? '🏅',
+                  'players': t['rosterCount'] ?? 0,
+                  'division': _joinedLeagueName ?? '',
+                })
+            .toList();
+        _loadingTeams = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingTeams = false);
+    }
+  }
+
+  Future<void> _confirmTeam() async {
+    if (_selectedTeamId == null) return;
+    setState(() => _joiningTeam = true);
+    try {
+      await SportyQoApi.joinTeam(_selectedTeamId!);
+      if (!mounted) return;
+      setState(() => _step = 2);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.message),
+        backgroundColor: Colors.redAccent,
+      ));
+    } finally {
+      if (mounted) setState(() => _joiningTeam = false);
+    }
+  }
+
+  // Teams come from GET /leagues/:id/teams after a successful join.
+  List<Map<String, dynamic>> _teams = [];
+  bool _loadingTeams = false;
+  String? _joinedLeagueId;
+  String? _leagueSeason;
+  String? _selectedTeamId;
+  bool _joiningTeam = false;
 
   void _onKeyTap(String val) {
     if (val == '⌫') {
@@ -422,7 +434,15 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
       ),
       const SizedBox(height: 10),
       Expanded(
-        child: ListView.separated(
+        child: _loadingTeams
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.primary))
+            : _teams.isEmpty
+                ? const Center(
+                    child: Text('No teams in this league yet',
+                        style:
+                            TextStyle(color: Colors.white54, fontSize: 14)))
+                : ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           itemCount: _teams.length,
           separatorBuilder: (_, __) => const SizedBox(height: 10),
@@ -430,8 +450,10 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
             final t = _teams[i];
             final isSelected = _selectedTeam == t['name'];
             return GestureDetector(
-              onTap: () =>
-                  setState(() => _selectedTeam = t['name'] as String),
+              onTap: () => setState(() {
+                _selectedTeam = t['name'] as String;
+                _selectedTeamId = t['id'] as String?;
+              }),
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -487,7 +509,7 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
                           builder: (_) => _TeamRosterScreen(
                             teamName: t['name'] as String,
                             emoji: t['emoji'] as String,
-                            roster: t['roster'] as List<Map<String, dynamic>>,
+                            teamId: t['id'] as String,
                           ),
                         ),
                       );
@@ -534,9 +556,9 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
         child: SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: _selectedTeam == null
+            onPressed: (_selectedTeam == null || _joiningTeam)
                 ? null
-                : () => setState(() => _step = 2),
+                : _confirmTeam,
             icon: const Icon(Icons.arrow_forward,
                 color: Colors.white, size: 18),
             label: const Text('Continue',
@@ -658,8 +680,8 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
                   color: AppColors.primary.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Text('U16 Division',
-                    style: TextStyle(
+                child: Text(_joinedLeagueName ?? 'League',
+                    style: const TextStyle(
                         color: AppColors.primary,
                         fontSize: 12,
                         fontWeight: FontWeight.w600)),
@@ -672,14 +694,14 @@ class _JoinLeagueScreenState extends State<JoinLeagueScreen> {
                 const SizedBox(width: 10),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text('Under16 Pro League',
-                        style: TextStyle(
+                  children: [
+                    Text(_joinedLeagueName ?? 'Your League',
+                        style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
                             fontSize: 14)),
-                    Text('Season 2024-25',
-                        style: TextStyle(
+                    Text(_leagueSeason ?? 'Current Season',
+                        style: const TextStyle(
                             color: Colors.white54, fontSize: 12)),
                   ],
                 ),
@@ -816,19 +838,63 @@ class _StepIndicator extends StatelessWidget {
 
 // ── Team Roster Screen ──────────────────────────────────────────────────
 
-class _TeamRosterScreen extends StatelessWidget {
+class _TeamRosterScreen extends StatefulWidget {
   final String teamName;
   final String emoji;
-  final List<Map<String, dynamic>> roster;
+  final String teamId;
 
   const _TeamRosterScreen({
     required this.teamName,
     required this.emoji,
-    required this.roster,
+    required this.teamId,
   });
 
   @override
+  State<_TeamRosterScreen> createState() => _TeamRosterScreenState();
+}
+
+class _TeamRosterScreenState extends State<_TeamRosterScreen> {
+  List<Map<String, dynamic>> roster = [];
+  bool _loading = true;
+
+  String get teamName => widget.teamName;
+  String get emoji => widget.emoji;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.teamRoster(widget.teamId);
+      if (!mounted) return;
+      setState(() {
+        roster = (data['roster'] as List<dynamic>)
+            .cast<Map<String, dynamic>>()
+            .map((r) => {
+                  'name': r['fullName'] ?? 'Player',
+                  'position': r['position'] ?? 'Player',
+                  'qoScore': r['qoScore'] ?? 0,
+                })
+            .toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0A0A1A),
+        body: Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A1A),
       body: SafeArea(

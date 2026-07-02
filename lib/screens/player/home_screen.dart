@@ -97,6 +97,9 @@ class _HomeTabState extends State<_HomeTab> {
   // Live data from GET /players/:id/home (falls back to mocks while loading
   // or if the backend is unreachable).
   String? _firstName;
+  String? _liveLeagueId;
+  Map<String, dynamic>? _upcomingMatch;
+  String? _liveSportName;
   String? _livePlayerCode;
   int? _liveQoScore;
   int _unreadCount = 0;
@@ -115,11 +118,15 @@ class _HomeTabState extends State<_HomeTab> {
       final league = data['activeLeague'] as Map<String, dynamic>?;
       final team = league?['team'] as Map<String, dynamic>?;
       final notif = data['notifications'] as Map<String, dynamic>?;
+      final sport = player?['sport'] as Map<String, dynamic>?;
       setState(() {
+        _upcomingMatch = data['upcomingMatch'] as Map<String, dynamic>?;
+        _liveSportName = sport?['name'] as String?;
         _firstName =
             (player?['fullName'] as String?)?.split(' ').first;
         _livePlayerCode = player?['playerId'] as String?;
         _liveQoScore = player?['qoScore'] as int?;
+        _liveLeagueId = league?['id'] as String?;
         _activeLeague = league?['name'] as String?;
         _activeTeam = team?['name'] as String?;
         _unreadCount = (notif?['unreadCount'] as int?) ?? 0;
@@ -127,6 +134,26 @@ class _HomeTabState extends State<_HomeTab> {
     } catch (_) {
       // Not logged in / offline: keep the existing mock visuals.
     }
+  }
+
+  static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  DateTime? get _matchDt {
+    final raw = _upcomingMatch?['scheduledAt'] as String?;
+    return raw == null ? null : DateTime.tryParse(raw)?.toLocal();
+  }
+
+  String _matchDate() {
+    final dt = _matchDt;
+    if (dt == null) return 'TBD';
+    return '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}';
+  }
+
+  String _matchTime() {
+    final dt = _matchDt;
+    if (dt == null) return 'TBD';
+    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    return '$h:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
   }
 
   String _getSportRole(String sport) {
@@ -238,7 +265,9 @@ class _HomeTabState extends State<_HomeTab> {
                                   letterSpacing: 0.5)),
                         ],
                         const SizedBox(height: 8),
-                        Text('U16 • ${_getSportRole(widget.selectedSport)}',
+                        Text(_activeLeague ??
+                            _getSportRole(
+                                _liveSportName ?? widget.selectedSport),
                             style: const TextStyle(
                                 color: Colors.white54, fontSize: 13)),
                         const SizedBox(height: 2),
@@ -485,7 +514,9 @@ class _HomeTabState extends State<_HomeTab> {
                     GestureDetector(
                       onTap: () => Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const _AllMatchesScreen())),
+                          MaterialPageRoute(
+                              builder: (_) => _AllMatchesScreen(
+                                  leagueId: _liveLeagueId))),
                       child: const Text('View All',
                           style: TextStyle(
                               color: AppColors.primary,
@@ -543,7 +574,11 @@ class _HomeTabState extends State<_HomeTab> {
                                       size: 56,
                                       letter: 'A'),
                                   const SizedBox(height: 8),
-                                  Text(_getTeam1(widget.selectedSport),
+                                  Text((_upcomingMatch?['homeTeam']
+                                              as Map<String, dynamic>?)?['name']
+                                          as String? ??
+                                      _getTeam1(_liveSportName ??
+                                          widget.selectedSport),
                                       style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 13,
@@ -561,7 +596,11 @@ class _HomeTabState extends State<_HomeTab> {
                                       size: 56,
                                       iconColor: Colors.white),
                                   const SizedBox(height: 8),
-                                  Text(_getTeam2(widget.selectedSport),
+                                  Text((_upcomingMatch?['awayTeam']
+                                              as Map<String, dynamic>?)?['name']
+                                          as String? ??
+                                      _getTeam2(_liveSportName ??
+                                          widget.selectedSport),
                                       style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 13,
@@ -578,26 +617,35 @@ class _HomeTabState extends State<_HomeTab> {
                       padding: const EdgeInsets.all(16),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: const [
+                        children: [
                           Row(children: [
-                            Icon(Icons.calendar_today_outlined,
+                            const Icon(Icons.calendar_today_outlined,
                                 color: Colors.white54, size: 14),
-                            SizedBox(width: 4),
-                            Text('24 May 2025',
-                                style: TextStyle(color: Colors.white70, fontSize: 12)),
+                            const SizedBox(width: 4),
+                            Text(_matchDate(),
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
                           ]),
                           Row(children: [
-                            Icon(Icons.access_time, color: Colors.white54, size: 14),
-                            SizedBox(width: 4),
-                            Text('06:00 PM',
-                                style: TextStyle(color: Colors.white70, fontSize: 12)),
+                            const Icon(Icons.access_time,
+                                color: Colors.white54, size: 14),
+                            const SizedBox(width: 4),
+                            Text(_matchTime(),
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
                           ]),
                           Row(children: [
-                            Icon(Icons.location_on_outlined,
+                            const Icon(Icons.location_on_outlined,
                                 color: Colors.white54, size: 14),
-                            SizedBox(width: 4),
-                            Text('Green Field Arena',
-                                style: TextStyle(color: Colors.white70, fontSize: 12)),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                  _upcomingMatch?['venue'] as String? ??
+                                      'Venue TBD',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      color: Colors.white70, fontSize: 12)),
+                            ),
                           ]),
                         ],
                       ),
@@ -848,72 +896,65 @@ class _NotificationScreen extends StatefulWidget {
 }
 
 class _NotificationScreenState extends State<_NotificationScreen> {
-  late List<Map<String, dynamic>> _notifications = [
-    {
-      'icon': Icons.emoji_events,
-      'color': const Color(0xFFFFB300),
-      'title': 'Points Added!',
-      'subtitle': '+52 Qo points added to your profile',
-      'time': '2m ago',
-      'read': false
-    },
-    {
-      'icon': Icons.people,
-      'color': const Color(0xFF7B2FFF),
-      'title': 'New Follower',
-      'subtitle': 'Rahul Sharma started following you',
-      'time': '15m ago',
-      'read': false
-    },
-    {
-      'icon': Icons.sports_cricket,
-      'color': const Color(0xFF00C853),
-      'title': 'League Update',
-      'subtitle': 'Summer League 2024 is now live!',
-      'time': '1h ago',
-      'read': false
-    },
-    {
-      'icon': Icons.favorite,
-      'color': Colors.red,
-      'title': 'Post Liked',
-      'subtitle': 'Jason liked your match highlight',
-      'time': '2h ago',
-      'read': true
-    },
-    {
-      'icon': Icons.shield,
-      'color': const Color(0xFF7B2FFF),
-      'title': 'Match Scheduled',
-      'subtitle': 'Alpha Warriors vs Thunder on 24 May',
-      'time': '3h ago',
-      'read': true
-    },
-    {
-      'icon': Icons.star,
-      'color': const Color(0xFFFFB300),
-      'title': 'Achievement Unlocked!',
-      'subtitle': 'You scored 100+ in a single match 🎉',
-      'time': '1d ago',
-      'read': true
-    },
-    {
-      'icon': Icons.person_add,
-      'color': const Color(0xFF7B2FFF),
-      'title': 'Follow Request',
-      'subtitle': 'Vikram Reddy wants to follow you',
-      'time': '1d ago',
-      'read': true
-    },
-    {
-      'icon': Icons.emoji_events,
-      'color': const Color(0xFF00C853),
-      'title': 'Rank Improved!',
-      'subtitle': 'You moved from #16 to #14',
-      'time': '2d ago',
-      'read': true
-    },
-  ];
+  List<Map<String, dynamic>> _notifications = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  static ({IconData icon, Color color}) _styleFor(String type) {
+    switch (type) {
+      case 'QO_POINTS':
+        return (icon: Icons.emoji_events, color: const Color(0xFFFFB300));
+      case 'LEAGUE_UPDATE':
+        return (icon: Icons.sports_cricket, color: const Color(0xFF00C853));
+      case 'SOCIAL':
+        return (icon: Icons.favorite, color: Colors.red);
+      case 'MATCH':
+        return (icon: Icons.shield, color: const Color(0xFF7B2FFF));
+      case 'ACHIEVEMENT':
+        return (icon: Icons.star, color: const Color(0xFFFFB300));
+      default:
+        return (icon: Icons.notifications, color: const Color(0xFF7B2FFF));
+    }
+  }
+
+  static String _relativeTime(String? iso) {
+    final dt = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return '';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.notifications();
+      if (!mounted) return;
+      setState(() {
+        _notifications = data.cast<Map<String, dynamic>>().map((n) {
+          final st = _styleFor(n['type'] as String? ?? '');
+          return {
+            'id': n['id'],
+            'icon': st.icon,
+            'color': st.color,
+            'title': n['title'] ?? '',
+            'subtitle': n['body'] ?? '',
+            'time': _relativeTime(n['createdAt'] as String?),
+            'read': n['isRead'] == true,
+          };
+        }).toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -964,6 +1005,9 @@ class _NotificationScreenState extends State<_NotificationScreen> {
                       _notifications =
                           _notifications.map((n) => {...n, 'read': true}).toList();
                     });
+                    SportyQoApi.markNotificationsRead();
+                    setState(() {
+                    });
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                       content: Text('All marked as read ✅'),
                       backgroundColor: AppColors.primary,
@@ -980,16 +1024,34 @@ class _NotificationScreenState extends State<_NotificationScreen> {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: ListView.separated(
+              child: _loading
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(color: AppColors.primary))
+                  : _notifications.isEmpty
+                      ? const Center(
+                          child: Text('No notifications yet',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 14)))
+                      : ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 itemCount: _notifications.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 10),
                 itemBuilder: (context, i) {
                   final n = _notifications[i];
                   return GestureDetector(
-                    onTap: () => setState(() {
-                      _notifications[i] = {..._notifications[i], 'read': true};
-                    }),
+                    onTap: () {
+                      setState(() {
+                        _notifications[i] = {
+                          ..._notifications[i],
+                          'read': true
+                        };
+                      });
+                      final id = _notifications[i]['id'] as String?;
+                      if (id != null) {
+                        SportyQoApi.markNotificationsRead(ids: [id]);
+                      }
+                    },
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
@@ -1061,65 +1123,73 @@ class _NotificationScreenState extends State<_NotificationScreen> {
 
 // ── All Matches Screen ────────────────────────────────────────────────
 
-class _AllMatchesScreen extends StatelessWidget {
-  const _AllMatchesScreen();
+class _AllMatchesScreen extends StatefulWidget {
+  const _AllMatchesScreen({this.leagueId});
+  final String? leagueId;
 
-  final List<Map<String, dynamic>> _matches = const [
-    {
-      'team1': 'Alpha Warriors',
-      'team2': 'Thunder Strikers',
-      'date': '24 May 2025',
-      'time': '06:00 PM',
-      'venue': 'Green Field Arena',
-      'status': 'Upcoming',
-      'statusColor': Color(0xFF7B2FFF)
-    },
-    {
-      'team1': 'Alpha Warriors',
-      'team2': 'Royal Challengers',
-      'date': '18 May 2025',
-      'time': '05:00 PM',
-      'venue': 'City Stadium',
-      'status': 'Won',
-      'statusColor': Color(0xFF00C853)
-    },
-    {
-      'team1': 'Alpha Warriors',
-      'team2': 'Super Kings',
-      'date': '14 May 2025',
-      'time': '04:00 PM',
-      'venue': 'Green Field Arena',
-      'status': 'Won',
-      'statusColor': Color(0xFF00C853)
-    },
-    {
-      'team1': 'Alpha Warriors',
-      'team2': 'Blue Riders',
-      'date': '10 May 2025',
-      'time': '06:00 PM',
-      'venue': 'Sports Complex',
-      'status': 'Won',
-      'statusColor': Color(0xFF00C853)
-    },
-    {
-      'team1': 'Alpha Warriors',
-      'team2': 'Red Panthers',
-      'date': '05 May 2025',
-      'time': '03:00 PM',
-      'venue': 'City Stadium',
-      'status': 'Lost',
-      'statusColor': Colors.red
-    },
-    {
-      'team1': 'Alpha Warriors',
-      'team2': 'Green Giants',
-      'date': '30 Apr 2025',
-      'time': '05:00 PM',
-      'venue': 'Green Field Arena',
-      'status': 'Won',
-      'statusColor': Color(0xFF00C853)
-    },
-  ];
+  @override
+  State<_AllMatchesScreen> createState() => _AllMatchesScreenState();
+}
+
+class _AllMatchesScreenState extends State<_AllMatchesScreen> {
+  List<Map<String, dynamic>> _matches = [];
+  bool _loading = true;
+
+  static const _months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.matches(leagueId: widget.leagueId);
+      if (!mounted) return;
+      setState(() {
+        _matches = data.cast<Map<String, dynamic>>().map((m) {
+          final dt = DateTime.tryParse(m['scheduledAt'] as String? ?? '')?.toLocal();
+          final status = (m['status'] as String? ?? 'SCHEDULED').toUpperCase();
+          String label;
+          Color color;
+          switch (status) {
+            case 'COMPLETED':
+              label = (m['resultSummary'] as String?)?.isNotEmpty == true
+                  ? 'Completed'
+                  : 'Completed';
+              color = const Color(0xFF00C853);
+              break;
+            case 'LIVE':
+              label = 'Live';
+              color = Colors.redAccent;
+              break;
+            case 'CANCELLED':
+              label = 'Cancelled';
+              color = Colors.white38;
+              break;
+            default:
+              label = 'Upcoming';
+              color = const Color(0xFF7B2FFF);
+          }
+          return {
+            'team1': (m['homeTeam'] as Map<String, dynamic>?)?['name'] ?? 'TBD',
+            'team2': (m['awayTeam'] as Map<String, dynamic>?)?['name'] ?? 'TBD',
+            'date': dt == null ? '' : '${dt.day} ${_months[dt.month - 1]} ${dt.year}',
+            'time': dt == null
+                ? ''
+                : '${dt.hour % 12 == 0 ? 12 : dt.hour % 12}:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}',
+            'venue': m['venue'] ?? 'Venue TBD',
+            'status': label,
+            'statusColor': color,
+          };
+        }).toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1146,7 +1216,16 @@ class _AllMatchesScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: ListView.separated(
+              child: _loading
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(color: AppColors.primary))
+                  : _matches.isEmpty
+                      ? const Center(
+                          child: Text('No matches scheduled yet',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 14)))
+                      : ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 itemCount: _matches.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
@@ -1171,9 +1250,12 @@ class _AllMatchesScreen extends StatelessWidget {
                                       shape: BoxShape.circle,
                                       border: Border.all(
                                           color: AppColors.primary.withOpacity(0.4))),
-                                  child: const Center(
-                                      child: Text('A',
-                                          style: TextStyle(
+                                  child: Center(
+                                      child: Text(
+                                          (m['team1'] as String).isEmpty
+                                              ? '?'
+                                              : (m['team1'] as String)[0],
+                                          style: const TextStyle(
                                               color: Colors.white,
                                               fontSize: 20,
                                               fontWeight: FontWeight.w800)))),

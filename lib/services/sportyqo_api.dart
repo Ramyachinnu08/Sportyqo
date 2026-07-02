@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'api_client.dart';
 
 /// Thin, typed wrappers over the backend endpoints the screens use.
@@ -66,6 +67,94 @@ class SportyQoApi {
 
   static Future<Map<String, dynamic>> teamRoster(String teamId) async {
     return await _api.get('/teams/$teamId/roster') as Map<String, dynamic>;
+  }
+
+  /// Player picks their team after joining a league.
+  static Future<Map<String, dynamic>> joinTeam(String teamId) async {
+    return await _api.post('/teams/$teamId/join') as Map<String, dynamic>;
+  }
+
+  static Future<List<dynamic>> leagueStandings(String leagueId) async {
+    return await _api.get('/leagues/$leagueId/standings') as List<dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> leagueDetails(String leagueId) async {
+    return await _api.get('/leagues/$leagueId') as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> leagueCode(String leagueId) async {
+    return await _api.get('/leagues/$leagueId/code') as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> shareLeague(String leagueId) async {
+    return await _api.post('/leagues/$leagueId/share') as Map<String, dynamic>;
+  }
+
+  /// Coach creates a league with teams. Returns the created league,
+  /// including the 6-digit `leagueCode`.
+  static Future<Map<String, dynamic>> createLeague({
+    required String name,
+    required String location,
+    required String gender, // "Men's" | "Women's" | "Mixed"
+    required String sportId,
+    String? iconEmoji,
+    String? season,
+    required List<Map<String, String>> teams, // [{name, iconEmoji?}]
+    String? logoPath,
+    Map<int, String> teamLogoPaths = const {},
+  }) async {
+    final payload = {
+      'name': name,
+      'location': location,
+      'gender': gender,
+      'sportId': sportId,
+      if (iconEmoji != null) 'iconEmoji': iconEmoji,
+      if (season != null) 'season': season,
+      'teams': teams,
+    };
+    final files = <String, String>{
+      if (logoPath != null) 'logo': logoPath,
+      for (final e in teamLogoPaths.entries) 'teamLogo_${e.key}': e.value,
+    };
+    return await _api.postMultipart('/leagues',
+        fields: {'payload': jsonEncode(payload)},
+        files: files) as Map<String, dynamic>;
+  }
+
+  /// Player discovery leaderboard (Dugout screen). Sorted by Qo score.
+  static Future<List<dynamic>> discoverPlayers(
+      {String? sport, String q = ''}) async {
+    return await _api.get('/players/discover', query: {
+      if (sport != null && sport != 'All') 'sport': sport,
+      if (q.isNotEmpty) 'q': q,
+      'limit': '50',
+    }) as List<dynamic>;
+  }
+
+  /// Coach searches players across their leagues (select-players screen).
+  static Future<List<dynamic>> searchPlayers({String q = ''}) async {
+    return await _api.get('/players',
+        query: q.isEmpty ? null : {'q': q}) as List<dynamic>;
+  }
+
+  static Future<List<dynamic>> coachCertifications() async {
+    return await _api.get('/coach/certifications') as List<dynamic>;
+  }
+
+  /// Coach records a match outcome (feeds standings).
+  static Future<Map<String, dynamic>> setMatchResult(
+    String matchId, {
+    required String homeScore,
+    required String awayScore,
+    String? winnerTeamId,
+    String? resultSummary,
+  }) async {
+    return await _api.patch('/matches/$matchId/result', body: {
+      'homeScore': homeScore,
+      'awayScore': awayScore,
+      'winnerTeamId': winnerTeamId,
+      if (resultSummary != null) 'resultSummary': resultSummary,
+    }) as Map<String, dynamic>;
   }
 
   static Future<List<dynamic>> notifications({bool unreadOnly = false}) async {

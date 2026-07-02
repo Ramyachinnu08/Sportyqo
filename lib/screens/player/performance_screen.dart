@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sportyqo_api.dart';
 
 class PerformanceScreen extends StatefulWidget {
   const PerformanceScreen({super.key});
@@ -9,8 +10,92 @@ class PerformanceScreen extends StatefulWidget {
 }
 
 class _PerformanceScreenState extends State<PerformanceScreen> {
+  bool _loading = true;
+  int _qoScore = 0;
+  int _weekPoints = 0;
+  Map<String, dynamic>? _ranking;
+  List<Map<String, dynamic>> _journey = [];
+  List<Map<String, dynamic>> _recent = [];
+
+  static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Card tiers by Qo score
+  ({String name, String label, Color color, int target, String next}) get _tier {
+    if (_qoScore >= 750) {
+      return (name: 'Purple Card', label: 'Elite Performer', color: AppColors.primary, target: 1000, next: 'Legend Card');
+    } else if (_qoScore >= 500) {
+      return (name: 'Blue Card', label: 'Strong Performer', color: Colors.blueAccent, target: 750, next: 'Purple Card');
+    } else if (_qoScore >= 250) {
+      return (name: 'Silver Card', label: 'Solid Performer', color: Colors.blueGrey, target: 500, next: 'Blue Card');
+    }
+    return (name: 'Bronze Card', label: 'Rising Star', color: Colors.orangeAccent, target: 250, next: 'Silver Card');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await SportyQoApi.playerPerformance();
+      if (!mounted) return;
+      final recent = (data['recentMatches'] as List<dynamic>? ?? [])
+          .cast<Map<String, dynamic>>();
+      final now = DateTime.now();
+      int week = 0;
+      for (final r in recent) {
+        final dt = DateTime.tryParse(r['playedAt'] as String? ?? '');
+        if (dt != null && now.difference(dt).inDays < 7) {
+          week += (r['qoPoints'] as num?)?.toInt() ?? 0;
+        }
+      }
+      setState(() {
+        _qoScore = (data['qoScore'] as num?)?.toInt() ?? 0;
+        _ranking = data['ranking'] as Map<String, dynamic>?;
+        _journey = (data['qoJourney'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>();
+        _recent = recent;
+        _weekPoints = week;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _fmtDate(String? iso) {
+    final dt = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return '';
+    return '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}';
+  }
+
+  List<String> _statStrings(Map<String, dynamic>? stats) {
+    if (stats == null) return [];
+    final out = <String>[];
+    void add(String key, String singular, String plural) {
+      final v = (stats[key] as num?)?.toInt();
+      if (v != null && v > 0) out.add('$v ${v == 1 ? singular : plural}');
+    }
+    add('runs', 'Run', 'Runs');
+    add('wickets', 'Wicket', 'Wickets');
+    add('catches', 'Catch', 'Catches');
+    add('goals', 'Goal', 'Goals');
+    add('assists', 'Assist', 'Assists');
+    add('points', 'Point', 'Points');
+    return out;
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0A0A1A),
+        body: Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A1A),
       body: SafeArea(
@@ -37,7 +122,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text('Qo Score', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                          const Text('242', style: TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.w800, height: 1)),
+                          Text('$_qoScore', style: const TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.w800, height: 1)),
                           const SizedBox(height: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -49,16 +134,17 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                             child: Row(children: [
                               Container(width: 8, height: 8, decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle)),
                               const SizedBox(width: 6),
-                              const Text('Purple Card', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                              Text(_tier.name, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
                             ]),
                           ),
                           const SizedBox(height: 6),
-                          const Text('Elite Performer', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                          Text(_tier.label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
                           const SizedBox(height: 6),
-                          Row(children: const [
-                            Icon(Icons.arrow_upward, color: AppColors.primary, size: 14),
-                            Text('+63 points this week', style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w500)),
-                          ]),
+                          if (_weekPoints > 0)
+                            Row(children: [
+                              const Icon(Icons.arrow_upward, color: AppColors.primary, size: 14),
+                              Text('+$_weekPoints points this week', style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w500)),
+                            ]),
                         ],
                       ),
                     ),
@@ -97,25 +183,25 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                         child: const Icon(Icons.bolt, color: AppColors.primary, size: 16),
                       ),
                       const SizedBox(width: 10),
-                      const Text('Purple Card', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                      Text(_tier.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
                       const Spacer(),
                       RichText(
-                        text: const TextSpan(children: [
-                          TextSpan(text: '758', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 14)),
-                          TextSpan(text: ' / 1000', style: TextStyle(color: Colors.white38, fontSize: 13)),
+                        text: TextSpan(children: [
+                          TextSpan(text: '$_qoScore', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 14)),
+                          TextSpan(text: ' / ${_tier.target}', style: const TextStyle(color: Colors.white38, fontSize: 13)),
                         ]),
                       ),
                     ]),
                     const SizedBox(height: 10),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(6),
-                      child: LinearProgressIndicator(value: 758 / 1000, backgroundColor: Colors.white10, color: AppColors.primary, minHeight: 8),
+                      child: LinearProgressIndicator(value: (_qoScore / _tier.target).clamp(0.0, 1.0), backgroundColor: Colors.white10, color: AppColors.primary, minHeight: 8),
                     ),
                     const SizedBox(height: 8),
                     RichText(
-                      text: const TextSpan(children: [
-                        TextSpan(text: '242 points to ', style: TextStyle(color: Colors.white38, fontSize: 12)),
-                        TextSpan(text: 'Blue Card', style: TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w600)),
+                      text: TextSpan(children: [
+                        TextSpan(text: '${(_tier.target - _qoScore).clamp(0, _tier.target)} points to ', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                        TextSpan(text: _tier.next, style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w600)),
                       ]),
                     ),
                   ],
@@ -148,22 +234,36 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                       ),
                     ]),
                     const SizedBox(height: 16),
-                    SizedBox(
-                      height: 140,
-                      child: CustomPaint(painter: _PerformanceGraphPainter(), size: const Size(double.infinity, 140)),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text('Jan', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                        Text('Feb', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                        Text('Mar', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                        Text('Apr', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                        Text('May', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                        Text('Jun', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                      ],
-                    ),
+                    if (_journey.length >= 2) ...[
+                      SizedBox(
+                        height: 140,
+                        child: CustomPaint(
+                            painter: _PerformanceGraphPainter(
+                                values: _journey
+                                    .map((j) =>
+                                        ((j['qoScore'] as num?) ?? 0)
+                                            .toDouble())
+                                    .toList()),
+                            size: const Size(double.infinity, 140)),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: _journey
+                            .map((j) => Text(j['label'] as String? ?? '',
+                                style: const TextStyle(
+                                    color: Colors.white38, fontSize: 10)))
+                            .toList(),
+                      ),
+                    ] else
+                      const SizedBox(
+                        height: 100,
+                        child: Center(
+                            child: Text(
+                                'Play matches to start your Qo Journey',
+                                style: TextStyle(
+                                    color: Colors.white38, fontSize: 13))),
+                      ),
                   ],
                 ),
               ),
@@ -181,85 +281,97 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
 
               const SizedBox(height: 10),
 
-              _MatchTile(
-                teamLetter: 'W',
-                opponent: 'vs Thunder Strikers',
-                date: '18 May 2025',
-                stat1: '78 Runs',
-                stat2: '1 Catch',
-                badge: 'Won Match',
-                extraBadge: 'MOM ⭐',
-                points: '+63',
-                badgeColor: const Color(0xFF00C853),
-                extraBadgeColor: const Color(0xFFFFB300),
-              ),
-              const SizedBox(height: 10),
-              _MatchTile(
-                teamLetter: 'W',
-                opponent: 'vs Royal Challengers',
-                date: '14 May 2025',
-                stat1: '32 Runs',
-                stat2: '2 Wickets',
-                badge: 'Won Match',
-                points: '+48',
-                badgeColor: const Color(0xFF00C853),
-              ),
-              const SizedBox(height: 10),
-              _MatchTile(
-                teamLetter: 'W',
-                opponent: 'vs Super Kings',
-                date: '10 May 2025',
-                stat1: '',
-                stat2: '2 Catches',
-                badge: 'Won Match',
-                points: '+37',
-                badgeColor: const Color(0xFF00C853),
-              ),
+              if (_recent.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F0F2A),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: const Center(
+                      child: Text('No matches played yet',
+                          style: TextStyle(
+                              color: Colors.white54, fontSize: 14))),
+                )
+              else
+                ..._recent.map((r) {
+                  final stats = _statStrings(r['stats'] as Map<String, dynamic>?);
+                  final opponent = r['opponent'] as String? ?? 'Match';
+                  final qp = (r['qoPoints'] as num?)?.toInt() ?? 0;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _MatchTile(
+                      teamLetter: opponent.replaceFirst('vs ', '').isEmpty
+                          ? '?'
+                          : opponent.replaceFirst('vs ', '')[0],
+                      opponent: opponent,
+                      date: _fmtDate(r['playedAt'] as String?),
+                      stat1: stats.isNotEmpty ? stats[0] : '',
+                      stat2: stats.length > 1 ? stats[1] : '',
+                      badge: (r['resultSummary'] as String?)?.isNotEmpty == true
+                          ? r['resultSummary'] as String
+                          : 'Completed',
+                      points: qp >= 0 ? '+$qp' : '$qp',
+                      badgeColor: const Color(0xFF00C853),
+                    ),
+                  );
+                }),
 
               const SizedBox(height: 16),
 
               // ── Ranking ──
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F0F2A),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Row(children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text('Ranking', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                        SizedBox(height: 8),
-                        Text('#14', style: TextStyle(color: AppColors.primary, fontSize: 36, fontWeight: FontWeight.w800)),
-                        Text('U16 Cricket', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                      ],
-                    ),
+              if (_ranking != null)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F0F2A),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white10),
                   ),
-                  Column(children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                  child: Row(children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Ranking',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14)),
+                          const SizedBox(height: 8),
+                          Text('#${_ranking!['position']}',
+                              style: const TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.w800)),
+                          const Text('In your leagues',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 12)),
+                        ],
                       ),
-                      child: const Text('Top 5%', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700, fontSize: 12)),
                     ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: 50, height: 50,
-                      decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.1), shape: BoxShape.circle),
-                      child: const Icon(Icons.people_outline, color: AppColors.primary, size: 26),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text('Out of 280', style: TextStyle(color: Colors.white54, fontSize: 10)),
-                    const Text('players', style: TextStyle(color: Colors.white38, fontSize: 10)),
+                    Column(children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                            color: AppColors.primary.withOpacity(0.1),
+                            shape: BoxShape.circle),
+                        child: const Icon(Icons.people_outline,
+                            color: AppColors.primary, size: 26),
+                      ),
+                      const SizedBox(height: 4),
+                      Text('Out of ${_ranking!['totalPlayers']}',
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 10)),
+                      const Text('players',
+                          style:
+                              TextStyle(color: Colors.white38, fontSize: 10)),
+                    ]),
                   ]),
-                ]),
-              ),
+                ),
 
               const SizedBox(height: 32),
             ],
@@ -361,9 +473,18 @@ class _MatchTile extends StatelessWidget {
 // ── Graph Painter ─────────────────────────────────────────────────────
 
 class _PerformanceGraphPainter extends CustomPainter {
+  final List<double> values;
+  _PerformanceGraphPainter({required this.values});
+
   @override
   void paint(Canvas canvas, Size size) {
-    final points = [0.9, 0.75, 0.65, 0.5, 0.35, 0.1];
+    // Normalize raw Qo scores into 0..1 painter space (inverted: 0 = top).
+    final minV = values.reduce((a, b) => a < b ? a : b);
+    final maxV = values.reduce((a, b) => a > b ? a : b);
+    final range = (maxV - minV) == 0 ? 1.0 : (maxV - minV);
+    final points = values
+        .map((v) => 0.9 - 0.8 * ((v - minV) / range))
+        .toList();
 
     final gridPaint = Paint()..color = Colors.white10..strokeWidth = 0.5;
     for (int i = 0; i < 4; i++) {
@@ -429,5 +550,6 @@ class _PerformanceGraphPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _PerformanceGraphPainter oldDelegate) =>
+      oldDelegate.values != values;
 }
