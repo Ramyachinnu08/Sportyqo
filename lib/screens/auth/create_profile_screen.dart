@@ -365,6 +365,7 @@ class _CreateProfileScreenState
                               ? AppColors.textWhite
                               : AppColors.textDark)),
                   onTap: () async {
+                    await showDatePicker(
                       context: context,
                       initialDate: DateTime(2005, 8, 15),
                       firstDate: DateTime(1950),
