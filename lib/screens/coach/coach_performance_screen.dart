@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/sportyqo_api.dart';
 
 class CoachPerformanceScreen extends StatefulWidget {
   const CoachPerformanceScreen({super.key});
@@ -16,16 +17,45 @@ class _CoachPerformanceScreenState
   TextEditingController();
   String _searchQuery = '';
 
-  final List<Map<String, dynamic>> _players = [
-    {'name': 'Arjun Sharma', 'sqid': 'SQID: 784512', 'role': 'Batsman', 'subRole': 'Top Order', 'rating': 4.6, 'added': '12 May 2025', 'active': true, 'emoji': '🏏'},
-    {'name': 'Rohan Mehta', 'sqid': 'SQID: 784513', 'role': 'Bowler', 'subRole': 'Fast', 'rating': 4.4, 'added': '12 May 2025', 'active': true, 'emoji': '🎯'},
-    {'name': 'Vihaan Patel', 'sqid': 'SQID: 784514', 'role': 'All Rounder', 'subRole': 'Spin', 'rating': 4.7, 'added': '11 May 2025', 'active': true, 'emoji': '⚡'},
-    {'name': 'Kabir Singh', 'sqid': 'SQID: 784515', 'role': 'Wicket Keeper', 'subRole': 'WK', 'rating': 4.5, 'added': '11 May 2025', 'active': true, 'emoji': '🧤'},
-    {'name': 'Aryan Joshi', 'sqid': 'SQID: 784516', 'role': 'Batsman', 'subRole': 'Middle Order', 'rating': 4.3, 'added': '10 May 2025', 'active': true, 'emoji': '🏏'},
-    {'name': 'Dev Sharma', 'sqid': 'SQID: 784517', 'role': 'Bowler', 'subRole': 'Spinner', 'rating': 4.6, 'added': '10 May 2025', 'active': true, 'emoji': '🎯'},
-    {'name': 'Rahul Verma', 'sqid': 'SQID: 784518', 'role': 'Batsman', 'subRole': 'Opener', 'rating': 3.9, 'added': '08 May 2025', 'active': false, 'emoji': '🏏'},
-    {'name': 'Kiran Das', 'sqid': 'SQID: 784519', 'role': 'Bowler', 'subRole': 'Medium Pace', 'rating': 3.7, 'added': '08 May 2025', 'active': false, 'emoji': '🎯'},
-  ];
+  List<Map<String, dynamic>> _players = [];
+  bool _loading = true;
+
+  static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPlayers();
+  }
+
+  Future<void> _loadPlayers() async {
+    try {
+      final data = await SportyQoApi.searchPlayers();
+      if (!mounted) return;
+      setState(() {
+        _players = data.cast<Map<String, dynamic>>().map((r) {
+          final dt =
+              DateTime.tryParse(r['joinedAt'] as String? ?? '')?.toLocal();
+          return {
+            'id': r['id'],
+            'name': r['fullName'] ?? '',
+            'sqid': r['playerId'] ?? '',
+            'role': r['teamName'] ?? 'No team yet',
+            'subRole': r['position'] ?? '',
+            'qoScore': (r['qoScore'] as num?)?.toInt() ?? 0,
+            'added': dt == null
+                ? ''
+                : '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}',
+            'active': r['onTeam'] == true,
+            'emoji': r['sportEmoji'] ?? '🏅',
+          };
+        }).toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   final TextEditingController _addPlayerController =
   TextEditingController();
@@ -329,7 +359,15 @@ class _CoachPerformanceScreenState
                     const SizedBox(height: 12),
 
                     // ── Player List ──
-                    if (_filtered.isEmpty)
+                    if (_loading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(32),
+                          child: CircularProgressIndicator(
+                              color: Color(0xFF00C853)),
+                        ),
+                      )
+                    else if (_filtered.isEmpty)
                       Center(
                         child: Padding(
                           padding: const EdgeInsets.all(32),
@@ -486,7 +524,7 @@ class _CoachPerformanceScreenState
                   _MiniStat(label: 'Sub Role', value: player['subRole']),
                   Container(width: 1, height: 30, color: Colors.white10),
                   _MiniStat(
-                      label: 'Rating', value: '⭐ ${player['rating']}'),
+                      label: 'Qo Score', value: '${player['qoScore']}'),
                   Container(width: 1, height: 30, color: Colors.white10),
                   _MiniStat(
                       label: 'Status',
@@ -606,22 +644,12 @@ class _CoachPerformanceScreenState
                   Navigator.pop(context);
                   _addPlayerController.clear();
                   if (id.isNotEmpty) {
-                    setState(() {
-                      _players.add({
-                        'name': 'New Player',
-                        'sqid': id,
-                        'role': 'Batsman',
-                        'subRole': 'Unknown',
-                        'rating': 4.0,
-                        'added': 'Just now',
-                        'active': true,
-                        'emoji': '🏏',
-                      });
-                    });
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Player $id added! ✅'),
-                        backgroundColor: const Color(0xFF00C853),
+                      const SnackBar(
+                        content: Text(
+                            'Players join with your league code — share it from the league screen. They will appear here once they join.'),
+                        backgroundColor: Color(0xFF1A6BFF),
+                        duration: Duration(seconds: 4),
                       ),
                     );
                   } else {
@@ -867,9 +895,9 @@ class _PlayerTile extends StatelessWidget {
                   style: const TextStyle(
                       color: AppColors.primary, fontSize: 11)),
               Row(children: [
-                const Icon(Icons.star, color: Colors.amber, size: 12),
+                const Icon(Icons.bolt, color: Colors.amber, size: 12),
                 const SizedBox(width: 2),
-                Text('${player['rating']}',
+                Text('Qo ${player['qoScore']}',
                     style: const TextStyle(
                         color: Colors.amber,
                         fontSize: 11,
