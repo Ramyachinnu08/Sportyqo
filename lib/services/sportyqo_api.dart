@@ -202,7 +202,13 @@ class SportyQoApi {
   static Future<String> directThread(String userId) async {
     final data = await _api.post('/dugout/direct', body: {'userId': userId})
         as Map<String, dynamic>;
-    return data['threadId'] as String;
+    final threadId = data['threadId'] as String?;
+    if (threadId == null || threadId.isEmpty) {
+      // Never let an empty id flow into "/dugout//messages" (a 404).
+      throw ApiException(
+          0, 'CLIENT', 'Could not open this chat. Please try again.');
+    }
+    return threadId;
   }
 
   static Future<List<dynamic>> coachCertifications() async {
@@ -281,6 +287,35 @@ class SportyQoApi {
         'description': description,
       'kind': kind,
     }) as Map<String, dynamic>;
+  }
+
+  /// Uploads a photo or video to the Playbook (players and coaches).
+  /// The backend infers `kind` from the media type when [kind] is null
+  /// (video → VIDEO, photo → DRILL). Returns the created item, including
+  /// its permanent `mediaUrl`. [onProgress] reports 0.0–1.0 upload progress.
+  static Future<Map<String, dynamic>> uploadPlaybookMedia({
+    required String filePath,
+    required String title,
+    String? description,
+    String? kind,
+    List<String> tags = const [],
+    void Function(double progress)? onProgress,
+  }) async {
+    return await _api.postMultipart('/playbook',
+        fields: {
+          'title': title,
+          if (description != null && description.isNotEmpty)
+            'description': description,
+          if (kind != null) 'kind': kind,
+          if (tags.isNotEmpty) 'tags': jsonEncode(tags),
+        },
+        files: {'media': filePath},
+        onProgress: onProgress) as Map<String, dynamic>;
+  }
+
+  /// Deletes one of the caller's own playbook items (and its media).
+  static Future<void> deletePlaybookItem(String id) async {
+    await _api.delete('/playbook/$id');
   }
 
   static Future<List<dynamic>> dugoutThreads() async {

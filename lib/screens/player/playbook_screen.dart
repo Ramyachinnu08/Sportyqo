@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 import '../../theme/app_theme.dart';
+import '../../services/api_client.dart';
 import '../../services/sportyqo_api.dart';
 
 class PlaybookScreen extends StatefulWidget {
@@ -91,6 +94,8 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
               .map((t) => '$t')
               .toList();
           (_byKind[kind] ?? _byKind['NOTE']!).add({
+            'id': raw['id'],
+            'isMine': raw['isMine'] == true,
             'kind': kind,
             'title': raw['title'] ?? '',
             'subtitle': (raw['description'] as String?)?.isNotEmpty == true
@@ -122,13 +127,242 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
     }
   }
 
-  void _comingSoon(BuildContext context) {
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text(
-          'Media uploads are coming soon — your coach can already share drills, strategies and notes with you.'),
-      backgroundColor: AppColors.primary,
-    ));
+  /// Long-press on one of your own uploads → confirm → DELETE /playbook/:id.
+  Future<void> _confirmDelete(Map<String, dynamic> item) async {
+    final id = item['id'] as String?;
+    if (id == null) return;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF111111),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete this upload?',
+            style: TextStyle(color: Colors.white, fontSize: 17)),
+        content: Text('"${item['title']}" will be removed permanently.',
+            style: const TextStyle(color: Colors.white60, fontSize: 13)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child:
+                  const Text('Cancel', style: TextStyle(color: Colors.white38))),
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Delete',
+                  style: TextStyle(color: Colors.redAccent))),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    try {
+      await SportyQoApi.deletePlaybookItem(id);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Deleted'), backgroundColor: Color(0xFF00C853)));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.message), backgroundColor: Colors.redAccent));
+    }
+  }
+
+  /// Picks a photo or video, asks for a title, uploads it to POST /playbook
+  /// with live progress, then refreshes the grid so the new item appears.
+  Future<void> _pickAndUpload(BuildContext sheetContext,
+      {required ImageSource source, required bool video}) async {
+    Navigator.pop(sheetContext); // close the picker sheet first
+
+    final picker = ImagePicker();
+    XFile? file;
+    try {
+      file = video
+          ? await picker.pickVideo(
+              source: source, maxDuration: const Duration(minutes: 5))
+          : await picker.pickImage(
+              source: source, maxWidth: 1920, imageQuality: 88);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'Could not open the camera/gallery. Check the app permissions in Settings.'),
+        backgroundColor: Colors.redAccent,
+      ));
+      return;
+    }
+    if (file == null || !mounted) return; // user cancelled
+
+    // Suggest a title from the file name; the user can change it.
+    final rawName = file.name.split('.').first.replaceAll(RegExp(r'[_-]+'), ' ').trim();
+    final titleCtrl = TextEditingController(
+        text: rawName.length >= 3 ? rawName : (video ? 'My video' : 'My photo'));
+    final descCtrl = TextEditingController();
+    final progress = ValueNotifier<double>(0);
+    bool uploading = false;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      backgroundColor: const Color(0xFF111111),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(24, 24, 24,
+              24 + MediaQuery.of(dialogContext).viewInsets.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(video ? Icons.videocam : Icons.photo,
+                    color: AppColors.primary, size: 22),
+                const SizedBox(width: 10),
+                Text(video ? 'Upload video' : 'Upload photo',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800)),
+              ]),
+              const SizedBox(height: 16),
+              TextField(
+                controller: titleCtrl,
+                enabled: !uploading,
+                maxLength: 140,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Title (min 3 characters)',
+                  counterText: '',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: const Color(0xFF1A1A1A),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: descCtrl,
+                enabled: !uploading,
+                maxLines: 2,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Description (optional)',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: const Color(0xFF1A1A1A),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (uploading) ...[
+                ValueListenableBuilder<double>(
+                  valueListenable: progress,
+                  builder: (_, v, __) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: v > 0 ? v : null,
+                          minHeight: 8,
+                          backgroundColor: Colors.white10,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                          v >= 1
+                              ? 'Processing…'
+                              : 'Uploading… ${(v * 100).toStringAsFixed(0)}%',
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: uploading
+                      ? null
+                      : () async {
+                          final title = titleCtrl.text.trim();
+                          if (title.length < 3) {
+                            ScaffoldMessenger.of(dialogContext)
+                                .showSnackBar(const SnackBar(
+                              content:
+                                  Text('Give it a title (3+ characters)'),
+                              backgroundColor: Colors.redAccent,
+                            ));
+                            return;
+                          }
+                          setSheetState(() => uploading = true);
+                          try {
+                            await SportyQoApi.uploadPlaybookMedia(
+                              filePath: file!.path,
+                              title: title,
+                              description: descCtrl.text.trim(),
+                              kind: video ? 'VIDEO' : null,
+                              onProgress: (v) => progress.value = v,
+                            );
+                            if (!dialogContext.mounted) return;
+                            Navigator.pop(dialogContext);
+                            await _load();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context)
+                                .showSnackBar(SnackBar(
+                              content: Text(video
+                                  ? 'Video uploaded ✅'
+                                  : 'Photo uploaded ✅'),
+                              backgroundColor: const Color(0xFF00C853),
+                            ));
+                          } on ApiException catch (e) {
+                            if (!dialogContext.mounted) return;
+                            setSheetState(() => uploading = false);
+                            ScaffoldMessenger.of(dialogContext)
+                                .showSnackBar(SnackBar(
+                              content: Text(e.code == 'NETWORK'
+                                  ? 'Upload failed — check your connection and try again.'
+                                  : e.message),
+                              backgroundColor: Colors.redAccent,
+                            ));
+                          } catch (_) {
+                            if (!dialogContext.mounted) return;
+                            setSheetState(() => uploading = false);
+                            ScaffoldMessenger.of(dialogContext)
+                                .showSnackBar(const SnackBar(
+                              content:
+                                  Text('Upload failed — please try again.'),
+                              backgroundColor: Colors.redAccent,
+                            ));
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14)),
+                  child: Text(uploading ? 'Uploading…' : 'Upload',
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+              ),
+              if (!uploading)
+                Center(
+                  child: TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('Cancel',
+                          style: TextStyle(color: Colors.white38))),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    progress.dispose();
   }
 
   void _showUploadDialog(BuildContext context) {
@@ -151,21 +385,24 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
                       icon: Icons.camera_alt,
                       label: 'Camera',
                       color: AppColors.primary,
-                      onTap: () => _comingSoon(context))),
+                      onTap: () => _pickAndUpload(context,
+                          source: ImageSource.camera, video: false))),
               const SizedBox(width: 12),
               Expanded(
                   child: _UploadOption(
                       icon: Icons.photo_library,
                       label: 'Gallery',
                       color: AppColors.primary,
-                      onTap: () => _comingSoon(context))),
+                      onTap: () => _pickAndUpload(context,
+                          source: ImageSource.gallery, video: false))),
               const SizedBox(width: 12),
               Expanded(
                   child: _UploadOption(
                       icon: Icons.videocam,
                       label: 'Video',
                       color: AppColors.primary,
-                      onTap: () => _comingSoon(context))),
+                      onTap: () => _pickAndUpload(context,
+                          source: ImageSource.gallery, video: true))),
             ]),
             const SizedBox(height: 8),
             TextButton(
@@ -382,6 +619,9 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
                               : _ContentDetailScreen(item: item),
                         ),
                       ),
+                      onLongPress: item['isMine'] == true
+                          ? () => _confirmDelete(item)
+                          : null,
                       child: _ContentCard(item: item),
                     );
                   },
@@ -458,228 +698,179 @@ class _VideoPlayerScreen extends StatefulWidget {
   State<_VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
+/// Plays the item's uploaded/shared video from its `mediaUrl`. Items without
+/// media (metadata-only VIDEO notes from a coach) get a friendly placeholder
+/// instead of the old fake player with simulated progress.
 class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
-  bool _isPlaying = false;
+  VideoPlayerController? _controller;
+  bool _failed = false;
   bool _showControls = true;
-  double _progress = 0.0;
+
+  String? get _mediaUrl =>
+      ApiClient.resolveMediaUrl(widget.item['mediaUrl'] as String?);
+
+  @override
+  void initState() {
+    super.initState();
+    final url = _mediaUrl;
+    if (url != null) {
+      final c = VideoPlayerController.networkUrl(Uri.parse(url));
+      _controller = c;
+      c.initialize().then((_) {
+        if (!mounted) return;
+        setState(() {});
+        c.play();
+      }).catchError((_) {
+        if (mounted) setState(() => _failed = true);
+      });
+      c.addListener(() {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  String _fmt(Duration d) {
+    final m = d.inMinutes;
+    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _controller;
+    final ready = c != null && c.value.isInitialized && !_failed;
+    final title = widget.item['title'] as String? ?? 'Video';
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        title: Text(title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 16)),
+      ),
+      body: SafeArea(
+        child: Column(children: [
+          Expanded(
+            child: Center(
+              child: c == null || _failed
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(widget.item['emoji'] as String? ?? '🎬',
+                            style: const TextStyle(fontSize: 64)),
+                        const SizedBox(height: 12),
+                        Text(
+                            _failed
+                                ? 'This video could not be played.\nCheck your connection and try again.'
+                                : 'No video attached to this item yet.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 13)),
+                      ],
+                    )
+                  : !ready
+                      ? const CircularProgressIndicator(
+                          color: AppColors.primary)
+                      : GestureDetector(
+                          onTap: () => setState(
+                              () => _showControls = !_showControls),
+                          child: AspectRatio(
+                            aspectRatio: c.value.aspectRatio == 0
+                                ? 16 / 9
+                                : c.value.aspectRatio,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                VideoPlayer(c),
+                                if (_showControls)
+                                  GestureDetector(
+                                    onTap: () => setState(() => c
+                                            .value.isPlaying
+                                        ? c.pause()
+                                        : c.play()),
+                                    child: Container(
+                                      width: 64,
+                                      height: 64,
+                                      decoration: const BoxDecoration(
+                                          color: Colors.black54,
+                                          shape: BoxShape.circle),
+                                      child: Icon(
+                                          c.value.isPlaying
+                                              ? Icons.pause
+                                              : Icons.play_arrow,
+                                          color: Colors.white,
+                                          size: 38),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+            ),
+          ),
+          if (ready)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: Column(children: [
+                VideoProgressIndicator(
+                  c,
+                  allowScrubbing: true,
+                  colors: const VideoProgressColors(
+                    playedColor: AppColors.primary,
+                    bufferedColor: Colors.white24,
+                    backgroundColor: Colors.white10,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(_fmt(c.value.position),
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 11)),
+                    Text(_fmt(c.value.duration),
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 11)),
+                  ],
+                ),
+              ]),
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Pinch-to-zoom viewer for uploaded photos.
+class _FullscreenImage extends StatelessWidget {
+  final String url;
+  const _FullscreenImage({required this.url});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          children: [
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  _showControls = !_showControls;
-                  if (!_isPlaying) {
-                    _isPlaying = true;
-                    _simulateProgress();
-                  }
-                });
-              },
-              child: Container(
-                width: double.infinity,
-                height: MediaQuery.of(context).size.height * 0.4,
-                color: const Color(0xFF0A0A0A),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Text(widget.item['emoji'] as String, style: const TextStyle(fontSize: 80)),
-                    Container(color: Colors.black.withOpacity(0.3)),
-                    if (_showControls)
-                      AnimatedOpacity(
-                        opacity: _showControls ? 1.0 : 0.0,
-                        duration: const Duration(milliseconds: 300),
-                        child: Container(
-                          width: 70,
-                          height: 70,
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white30, width: 2),
-                          ),
-                          child: Icon(
-                            _isPlaying ? Icons.pause : Icons.play_arrow,
-                            color: Colors.white,
-                            size: 40,
-                          ),
-                        ),
-                      ),
-                    if (_showControls)
-                      Positioned(
-                        top: 16,
-                        left: 16,
-                        right: 16,
-                        child: Row(children: [
-                          GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                              child: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
-                            ),
-                          ),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              _durationLabel,
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 12),
-                            ),
-                          ),
-                        ]),
-                      ),
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: Column(children: [
-                        if (_showControls)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Row(children: [
-                              Text(
-                                _formatTime(_progress),
-                                style: const TextStyle(color: Colors.white, fontSize: 11),
-                              ),
-                              const Spacer(),
-                              Text(
-                                _durationLabel,
-                                style: const TextStyle(
-                                    color: Colors.white54, fontSize: 11),
-                              ),
-                            ]),
-                          ),
-                        const SizedBox(height: 6),
-                        LinearProgressIndicator(
-                          value: _progress,
-                          backgroundColor: Colors.white24,
-                          color: AppColors.primary,
-                          minHeight: 3,
-                        ),
-                      ]),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.item['title'] as String,
-                    style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(children: [
-                    Flexible(
-                      child: Text(widget.item['subtitle'] as String? ?? '',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: AppColors.primary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                    const Text(' • ', style: TextStyle(color: Colors.white38)),
-                    Text(widget.item['date'] as String? ?? '',
-                        style: const TextStyle(
-                            color: Colors.white38, fontSize: 13)),
-                  ]),
-                  const SizedBox(height: 16),
-                  const Divider(color: Colors.white10),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _ControlBtn(
-                        icon: Icons.replay_10,
-                        label: 'Replay',
-                        onTap: () => setState(() => _progress = (_progress - 0.1).clamp(0.0, 1.0)),
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _isPlaying = !_isPlaying;
-                            if (_isPlaying) _simulateProgress();
-                          });
-                        },
-                        child: Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                          child: Icon(
-                            _isPlaying ? Icons.pause : Icons.play_arrow,
-                            color: Colors.white,
-                            size: 32,
-                          ),
-                        ),
-                      ),
-                      _ControlBtn(
-                        icon: Icons.forward_10,
-                        label: 'Forward',
-                        onTap: () => setState(() => _progress = (_progress + 0.1).clamp(0.0, 1.0)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
+      appBar: AppBar(backgroundColor: Colors.black),
+      body: Center(
+        child: InteractiveViewer(
+          maxScale: 5,
+          child: Image.network(
+            url,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const Text('Could not load image',
+                style: TextStyle(color: Colors.white54)),
+          ),
         ),
       ),
     );
-  }
-
-  void _simulateProgress() async {
-    while (_isPlaying && _progress < 1.0) {
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted && _isPlaying) {
-        setState(() => _progress += 0.02);
-        if (_progress >= 1.0) {
-          setState(() {
-            _isPlaying = false;
-            _progress = 0.0;
-          });
-        }
-      }
-    }
-  }
-
-  /// Total seconds parsed from a "m:ss" duration string; 0 when missing or
-  /// malformed. This used to crash with a red error screen on items without
-  /// a duration (drills, strategies, notes).
-  int get _totalSeconds {
-    final raw = widget.item['duration'] as String? ?? '';
-    final parts = raw.split(':');
-    if (parts.length != 2) return 0;
-    final m = int.tryParse(parts[0]);
-    final sec = int.tryParse(parts[1]);
-    if (m == null || sec == null) return 0;
-    return m * 60 + sec;
-  }
-
-  String get _durationLabel {
-    final raw = (widget.item['duration'] as String? ?? '').trim();
-    return raw.isEmpty ? '--:--' : raw;
-  }
-
-  String _formatTime(double progress) {
-    final currentSeconds = (_totalSeconds * progress).round();
-    final m = currentSeconds ~/ 60;
-    final s = currentSeconds % 60;
-    return '$m:${s.toString().padLeft(2, '0')}';
   }
 }
 
@@ -711,6 +902,9 @@ class _ContentDetailScreen extends StatelessWidget {
     final date = item['date'] as String? ?? '';
     final emoji = item['emoji'] as String? ?? '📝';
     final color = item['color'] as Color? ?? const Color(0xFF2A2A1A);
+    final mediaUrl =
+        ApiClient.resolveMediaUrl(item['mediaUrl'] as String?);
+    final showImage = _ContentCard.isImageUrl(mediaUrl);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -742,15 +936,34 @@ class _ContentDetailScreen extends StatelessWidget {
                   children: [
                     Container(
                       width: double.infinity,
-                      height: 160,
+                      height: showImage ? 220 : 160,
                       decoration: BoxDecoration(
                         color: color,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: Colors.white10),
                       ),
-                      child: Center(
-                          child: Text(emoji,
-                              style: const TextStyle(fontSize: 64))),
+                      clipBehavior: Clip.antiAlias,
+                      child: showImage
+                          ? GestureDetector(
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      _FullscreenImage(url: mediaUrl!),
+                                ),
+                              ),
+                              child: Image.network(
+                                mediaUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Center(
+                                    child: Text(emoji,
+                                        style:
+                                            const TextStyle(fontSize: 64))),
+                              ),
+                            )
+                          : Center(
+                              child: Text(emoji,
+                                  style: const TextStyle(fontSize: 64))),
                     ),
                     const SizedBox(height: 18),
                     Text(title,
@@ -850,15 +1063,40 @@ class _ContentCard extends StatelessWidget {
   final Map<String, dynamic> item;
   const _ContentCard({required this.item});
 
+  static bool isImageUrl(String? url) =>
+      url != null &&
+      RegExp(r'\.(png|jpe?g|webp|gif)(\?|$)', caseSensitive: false)
+          .hasMatch(url);
+
   @override
   Widget build(BuildContext context) {
+    final mediaUrl =
+        ApiClient.resolveMediaUrl(item['mediaUrl'] as String?);
+    final showImage = isImageUrl(mediaUrl);
     return Container(
       decoration: BoxDecoration(
         color: item['color'] as Color,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white10),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Stack(children: [
+        if (showImage)
+          Positioned.fill(
+            child: Image.network(
+              mediaUrl!,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              loadingBuilder: (context, child, p) => p == null
+                  ? child
+                  : const Center(
+                      child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white24))),
+            ),
+          ),
         if ((item['kind'] as String? ?? '') == 'VIDEO')
           Positioned(
             top: 10,
@@ -889,7 +1127,10 @@ class _ContentCard extends StatelessWidget {
                       fontWeight: FontWeight.w600)),
             ),
           ),
-        Center(child: Text(item['emoji'] as String, style: const TextStyle(fontSize: 48))),
+        if (!showImage)
+          Center(
+              child: Text(item['emoji'] as String,
+                  style: const TextStyle(fontSize: 48))),
         Positioned(
           bottom: 0,
           left: 0,
@@ -955,23 +1196,3 @@ class _UploadOption extends StatelessWidget {
     );
   }
 }
-
-class _ControlBtn extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  const _ControlBtn({required this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(children: [
-        Icon(icon, color: Colors.white, size: 32),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-      ]),
-    );
-  }
-}
-

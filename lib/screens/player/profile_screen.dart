@@ -45,8 +45,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _notificationsOn = settings?['notifications'] != false;
       });
     } catch (_) {
-      // keep placeholders when offline
+      // The profile aggregate failed (offline / stale session). Academy
+      // entries are the data users most often report as "not saving", so
+      // fall back to the dedicated GET /me/academy endpoint — it works even
+      // when the aggregate call doesn't, and keeps saved entries visible.
+      try {
+        final rows = await SportyQoApi.academyHistory();
+        if (!mounted) return;
+        setState(() {
+          _academyHistory = rows.cast<Map<String, dynamic>>();
+        });
+      } catch (_) {
+        // Truly offline: keep whatever is already on screen.
+      }
     }
+  }
+
+  /// Applies an add/update/delete result to the visible list immediately, so
+  /// a save is reflected on screen even if the follow-up reload fails. The
+  /// authoritative reload still runs right after.
+  void _applyAcademyMutation(
+      {Map<String, dynamic>? upsert, String? deleteId}) {
+    if (!mounted) return;
+    setState(() {
+      if (deleteId != null) {
+        _academyHistory.removeWhere((a) => a['id'] == deleteId);
+      }
+      if (upsert != null) {
+        final i =
+            _academyHistory.indexWhere((a) => a['id'] == upsert['id']);
+        if (i >= 0) {
+          _academyHistory[i] = upsert;
+        } else {
+          _academyHistory.insert(0, upsert);
+        }
+      }
+    });
+    _load();
   }
 
   String _initials(String name) {
@@ -496,7 +531,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     entry['id'] as String);
                                 if (!sheetContext.mounted) return;
                                 Navigator.pop(sheetContext);
-                                _load();
+                                _applyAcademyMutation(
+                                    deleteId: entry['id'] as String);
                               } on ApiException catch (e) {
                                 setModalState(() => saving = false);
                                 if (!sheetContext.mounted) return;
@@ -548,15 +584,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             final end = int.tryParse(endCtrl.text.trim());
                             setModalState(() => saving = true);
                             try {
+                              Map<String, dynamic> saved;
                               if (entry == null) {
-                                await SportyQoApi.addAcademy(
+                                saved = await SportyQoApi.addAcademy(
                                   academy: academy,
                                   role: roleCtrl.text.trim(),
                                   startYear: start,
                                   endYear: end,
                                 );
                               } else {
-                                await SportyQoApi.updateAcademy(
+                                saved = await SportyQoApi.updateAcademy(
                                   entry['id'] as String,
                                   academy: academy,
                                   role: roleCtrl.text.trim(),
@@ -566,7 +603,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               }
                               if (!sheetContext.mounted) return;
                               Navigator.pop(sheetContext);
-                              _load();
+                              _applyAcademyMutation(upsert: saved);
                             } on ApiException catch (e) {
                               setModalState(() => saving = false);
                               if (!sheetContext.mounted) return;

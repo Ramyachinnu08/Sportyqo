@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,12 +56,36 @@ class ApiClient {
   }
 
   /// Call once at app start (e.g. in main) to restore a saved session.
+  ///
+  /// Self-healing: sessions saved by older app versions may have a token but
+  /// no userId/role. Screens build API paths from [userId], so a missing id
+  /// silently produced broken requests (surfacing as confusing 404s, e.g. on
+  /// the Dugout page). If the token is present but the identity is not, we
+  /// fetch /me once to repair the session; if the token turns out to be dead
+  /// we clear it so the app cleanly shows the login screen instead.
   Future<void> restoreSession() async {
     final p = await SharedPreferences.getInstance();
     _accessToken = p.getString(_kAccess);
     _refreshToken = p.getString(_kRefresh);
     userId = p.getString(_kUserId);
     role = p.getString(_kRole);
+
+    if (_accessToken != null && (userId == null || role == null)) {
+      try {
+        final me = await get('/me').timeout(const Duration(seconds: 8))
+            as Map<String, dynamic>;
+        userId = me['userId'] as String?;
+        role = me['role'] as String?;
+        if (userId != null) await p.setString(_kUserId, userId!);
+        if (role != null) await p.setString(_kRole, role!);
+        if (userId == null || role == null) await clearSession();
+      } on ApiException catch (e) {
+        // Offline start keeps the session; a rejected token clears it.
+        if (e.code != 'NETWORK') await clearSession();
+      } catch (_) {
+        // Timeout or anything unexpected: keep the session, stay usable offline.
+      }
+    }
   }
 
   Future<void> saveSession(Map<String, dynamic> auth) async {
@@ -93,6 +118,20 @@ class ApiClient {
           'Authorization': 'Bearer $_accessToken',
       };
 
+  /// Guards against paths built from null/empty ids (e.g. "/dugout//messages"
+  /// or "/players/null/home"). Those used to reach the server and come back as
+  /// a baffling "Route not found" — now they fail fast with a message that
+  /// names the broken path so the bug is findable.
+  static void _assertValidPath(String path) {
+    if (path.contains('//') ||
+        path.contains('/null/') ||
+        path.endsWith('/null') ||
+        path.endsWith('/')) {
+      throw ApiException(0, 'CLIENT',
+          'Internal app error: malformed API path "$path". Please try again, and report this if it keeps happening.');
+    }
+  }
+
   Future<dynamic> get(String path,
       {Map<String, String>? query, bool auth = true}) {
     return _send('GET', path, query: query, auth: auth);
@@ -113,13 +152,17 @@ class ApiClient {
     return _send('DELETE', path, body: body, auth: auth);
   }
 
-  /// Multipart POST (league creation with logos, avatar upload, documents).
-  /// [fields] are plain form fields; [files] maps field name -> file path.
+  /// Multipart POST (league creation with logos, avatar upload, documents,
+  /// playbook media). [fields] are plain form fields; [files] maps field
+  /// name -> file path. Pass [onProgress] to receive upload progress in the
+  /// 0.0–1.0 range (used by the Playbook upload sheet).
   Future<dynamic> postMultipart(String path,
       {Map<String, String> fields = const {},
-      Map<String, String> files = const {}}) async {
+      Map<String, String> files = const {},
+      void Function(double progress)? onProgress}) async {
+    _assertValidPath(path);
     final uri = Uri.parse('$baseUrl$path');
-    final req = http.MultipartRequest('POST', uri);
+    final req = _ProgressMultipartRequest('POST', uri, onProgress: onProgress);
     if (_accessToken != null) {
       req.headers['Authorization'] = 'Bearer $_accessToken';
     }
@@ -129,8 +172,9 @@ class ApiClient {
     }
     http.Response res;
     try {
+      // Videos can take a while on mobile networks — allow up to 5 minutes.
       res = await http.Response.fromStream(
-          await req.send().timeout(const Duration(seconds: 60)));
+          await req.send().timeout(const Duration(minutes: 5)));
     } catch (_) {
       throw ApiException(0, 'NETWORK',
           'Could not reach the server. Check your connection and API_BASE_URL.');
@@ -156,6 +200,7 @@ class ApiClient {
       Map<String, String>? query,
       bool auth = true,
       bool retried = false}) async {
+    _assertValidPath(path);
     final uri = Uri.parse('$baseUrl$path')
         .replace(queryParameters: query?.isEmpty ?? true ? null : query);
 
@@ -211,5 +256,31 @@ class ApiClient {
       }
     } catch (_) {}
     return false;
+  }
+}
+
+/// A [http.MultipartRequest] that reports how many bytes have been handed to
+/// the network layer, giving determinate upload progress for large media.
+class _ProgressMultipartRequest extends http.MultipartRequest {
+  _ProgressMultipartRequest(super.method, super.url, {this.onProgress});
+
+  final void Function(double progress)? onProgress;
+
+  @override
+  http.ByteStream finalize() {
+    final byteStream = super.finalize();
+    final report = onProgress;
+    if (report == null) return byteStream;
+
+    final total = contentLength;
+    var sent = 0;
+    final transformer = StreamTransformer<List<int>, List<int>>.fromHandlers(
+      handleData: (chunk, sink) {
+        sent += chunk.length;
+        if (total > 0) report((sent / total).clamp(0.0, 1.0));
+        sink.add(chunk);
+      },
+    );
+    return http.ByteStream(byteStream.transform(transformer));
   }
 }
