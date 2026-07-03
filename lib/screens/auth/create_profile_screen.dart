@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import 'select_sport_screen.dart';
+import '../../services/auth_service.dart';
 
 class CreateProfileScreen extends StatefulWidget {
   final bool isPlayer;
@@ -16,6 +17,14 @@ class _CreateProfileScreenState
     extends State<CreateProfileScreen> {
   String _selectedGender = 'Male';
   bool _hasPhoto = false;
+  final TextEditingController _locationCtrl = TextEditingController(
+      text: RegistrationDraft.instance.location ?? '');
+
+  @override
+  void dispose() {
+    _locationCtrl.dispose();
+    super.dispose();
+  }
 
   void _showPhotoOptions(BuildContext context) {
     showModalBottomSheet(
@@ -443,32 +452,16 @@ class _CreateProfileScreenState
                       fontWeight:
                       FontWeight.w500)),
               const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? AppColors.darkCard
-                      : Colors.white,
-                  borderRadius:
-                  BorderRadius.circular(12),
-                  border: Border.all(
-                      color: isDark
-                          ? AppColors.darkBorder
-                          : Colors.grey[300]!),
-                ),
-                child: ListTile(
-                  leading: const Icon(
-                      Icons.location_on_outlined,
-                      color: AppColors.textGrey,
-                      size: 20),
-                  title: Text('New York, USA',
-                      style: TextStyle(
-                          color: isDark
-                              ? AppColors.textWhite
-                              : AppColors.textDark)),
-                  trailing: const Icon(
-                      Icons.keyboard_arrow_down,
-                      color: AppColors.textGrey),
-                  onTap: () {},
+              TextField(
+                controller: _locationCtrl,
+                style: TextStyle(
+                    color: isDark
+                        ? AppColors.textWhite
+                        : AppColors.textDark),
+                decoration: const InputDecoration(
+                  hintText: 'City, State (e.g. Bangalore, Karnataka)',
+                  prefixIcon: Icon(Icons.location_on_outlined,
+                      color: AppColors.textGrey, size: 20),
                 ),
               ),
 
@@ -479,6 +472,17 @@ class _CreateProfileScreenState
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
+                    final draft =
+                        RegistrationDraft.instance;
+                    draft.location =
+                        _locationCtrl.text.trim().isEmpty
+                            ? null
+                            : _locationCtrl.text.trim();
+                    draft.gender = {
+                      'Male': 'MALE',
+                      'Female': 'FEMALE',
+                      'Other': 'OTHER',
+                    }[_selectedGender];
                     Navigator.push(
                       context,
                       MaterialPageRoute(

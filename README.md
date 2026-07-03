@@ -44,4 +44,13 @@ lib/
 - **Dugout**: search now queries the backend (debounced) instead of only filtering the first
   page, sport filters reload from the server, Follow actually calls the follow API (with the
   correct initial state), and the message button opens a real 1:1 chat.
-- **Login**: social buttons no longer fake a login into an empty, unauthenticated Home.
+- **Removed non-working features** (2nd pass): third-party login buttons (Google /
+  Apple / Facebook) on the login and both sign-up screens; the fake "Forgot
+  Password" sheet (no email/SMS delivery is configured yet); the decorative
+  coach OTP screens (enter mobile → verification sent → access code) — coach
+  sign-up now goes straight to profile completion; dead buttons across the app
+  (playbook Like/Save/More row, chat attachment + menu icons, "Mark as
+  Completed", QR scanner icon, extra share option, fake bookmark toggle) and
+  the fake Dark Mode setting. The sign-up Location field, gender, notification
+  setting and the Dugout share button are now actually wired to the backend
+  instead of being placeholders.

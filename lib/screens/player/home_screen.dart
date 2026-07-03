@@ -1602,8 +1602,9 @@ class _LeagueDetailScreenState extends State<_LeagueDetailScreen> {
                                       color: Colors.white,
                                       fontWeight: FontWeight.w800,
                                       fontSize: 16)),
-                              const Text('U-16 • Season 2024-25',
-                                  style: TextStyle(color: Colors.white54, fontSize: 13)),
+                              Text(sport,
+                                  style: const TextStyle(
+                                      color: Colors.white54, fontSize: 13)),
                             ],
                           ),
                         ),
@@ -1674,7 +1675,7 @@ class _LeagueDetailScreenState extends State<_LeagueDetailScreen> {
                                         color: Colors.white,
                                         fontWeight: FontWeight.w700,
                                         fontSize: 16)),
-                                Text('U16 $sport • 28 Players',
+                                Text(sport,
                                     style: const TextStyle(
                                         color: Colors.white54, fontSize: 12)),
                               ],

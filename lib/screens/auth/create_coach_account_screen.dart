@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/auth_service.dart';
-import 'enter_mobile_screen.dart';
+import 'complete_coach_profile_screen.dart';
 
 class CreateCoachAccountScreen extends StatefulWidget {
   const CreateCoachAccountScreen({super.key});
@@ -193,10 +193,13 @@ class _CreateCoachAccountScreenState extends State<CreateCoachAccountScreen> {
                     draft.phone = phone;
                     draft.password = password;
                     draft.isPlayer = false;
+                    // The old mobile-OTP screens were decorative (no SMS is
+                    // actually sent), so we go straight to profile completion.
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const EnterMobileScreen()),
+                          builder: (_) =>
+                              const CompleteCoachProfileScreen()),
                     );
                   },
                   style: ElevatedButton.styleFrom(
@@ -211,48 +214,6 @@ class _CreateCoachAccountScreenState extends State<CreateCoachAccountScreen> {
                           fontSize: 16, fontWeight: FontWeight.w700)),
                 ),
               ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                      child: Divider(
-                          color: isDark
-                              ? AppColors.darkBorder
-                              : Colors.grey[300])),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('or',
-                        style: TextStyle(
-                            color: AppColors.textGrey, fontSize: 13)),
-                  ),
-                  Expanded(
-                      child: Divider(
-                          color: isDark
-                              ? AppColors.darkBorder
-                              : Colors.grey[300])),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _SocialButton(
-                      icon: Icons.g_mobiledata,
-                      color: const Color(0xFFDB4437),
-                      onTap: () {}),
-                  const SizedBox(width: 16),
-                  _SocialButton(
-                      icon: Icons.apple,
-                      color: isDark ? Colors.white : Colors.black,
-                      onTap: () {}),
-                  const SizedBox(width: 16),
-                  _SocialButton(
-                      icon: Icons.facebook,
-                      color: const Color(0xFF1877F2),
-                      onTap: () {}),
-                ],
-              ),
-              const SizedBox(height: 24),
               Center(
                 child: RichText(
                   text: const TextSpan(
@@ -307,30 +268,3 @@ class _CreateCoachAccountScreenState extends State<CreateCoachAccountScreen> {
   }
 }
 
-class _SocialButton extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _SocialButton(
-      {required this.icon, required this.color, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.darkCard : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-              color: isDark ? AppColors.darkBorder : Colors.grey[300]!),
-        ),
-        child: Icon(icon, color: color, size: 28),
-      ),
-    );
-  }
-}

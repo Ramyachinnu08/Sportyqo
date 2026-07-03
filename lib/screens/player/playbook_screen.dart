@@ -633,13 +633,6 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  Row(children: [
-                    Expanded(child: _ActionBtn(icon: Icons.thumb_up_outlined, label: 'Like', onTap: () {})),
-                    Expanded(child: _ActionBtn(icon: Icons.share_outlined, label: 'Share', onTap: () {})),
-                    Expanded(child: _ActionBtn(icon: Icons.download_outlined, label: 'Save', onTap: () {})),
-                    Expanded(child: _ActionBtn(icon: Icons.more_horiz, label: 'More', onTap: () {})),
-                  ]),
                 ],
               ),
             ),
@@ -982,21 +975,3 @@ class _ControlBtn extends StatelessWidget {
   }
 }
 
-class _ActionBtn extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  const _ActionBtn({required this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(children: [
-        Icon(icon, color: Colors.white70, size: 26),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-      ]),
-    );
-  }
-}

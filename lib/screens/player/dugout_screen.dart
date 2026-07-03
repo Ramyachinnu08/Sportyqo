@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../theme/app_theme.dart';
 import '../../services/sportyqo_api.dart';
 import '../../services/api_client.dart';
@@ -517,20 +518,13 @@ class _FilterChip extends StatelessWidget {
 
 // ── Player Card ───────────────────────────────────────────────────────
 
-class _PlayerCard extends StatefulWidget {
+class _PlayerCard extends StatelessWidget {
   final Map<String, dynamic> player;
   const _PlayerCard({required this.player});
 
   @override
-  State<_PlayerCard> createState() => _PlayerCardState();
-}
-
-class _PlayerCardState extends State<_PlayerCard> {
-  bool _bookmarked = false;
-
-  @override
   Widget build(BuildContext context) {
-    final p = widget.player;
+    final p = player;
     return Container(
       height: 120,
       decoration: BoxDecoration(
@@ -582,15 +576,6 @@ class _PlayerCardState extends State<_PlayerCard> {
                           const Text('Qo Score',
                               style: TextStyle(color: Colors.white60, fontSize: 10)),
                         ]),
-                      ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: () => setState(() => _bookmarked = !_bookmarked),
-                        child: Icon(
-                          _bookmarked ? Icons.bookmark : Icons.bookmark_border,
-                          color: _bookmarked ? AppColors.primary : Colors.white38,
-                          size: 20,
-                        ),
                       ),
                     ],
                   ),
@@ -735,7 +720,8 @@ class _PlayerProfileScreenState extends State<_PlayerProfileScreen> {
                   ),
                   const Spacer(),
                   GestureDetector(
-                    onTap: () {},
+                    onTap: () => Share.share(
+                        'Check out ${widget.player['name']} (Qo Score ${widget.player['qoScore']}) on SportyQo!'),
                     child: Container(
                       width: 36,
                       height: 36,

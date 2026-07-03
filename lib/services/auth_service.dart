@@ -55,6 +55,7 @@ class AuthService {
       if (sportId != null) 'sportId': sportId,
     });
     await _api.saveSession(data as Map<String, dynamic>);
+    await _pushDraftProfileFields(d);
     return data['playerId'] as String;
   }
 
@@ -72,7 +73,25 @@ class AuthService {
       if (academy != null && academy.isNotEmpty) 'academy': academy,
     });
     await _api.saveSession(data as Map<String, dynamic>);
+    await _pushDraftProfileFields(d);
     return data['coachCode'] as String;
+  }
+
+  /// Best-effort: sends the profile details collected during sign-up
+  /// (location, gender, dob) to PATCH /me/profile after registration.
+  static Future<void> _pushDraftProfileFields(RegistrationDraft d) async {
+    final fields = <String, dynamic>{
+      if (d.location != null && d.location!.isNotEmpty)
+        'location': d.location,
+      if (d.gender != null) 'gender': d.gender,
+      if (d.dob != null) 'dob': d.dob,
+    };
+    if (fields.isEmpty) return;
+    try {
+      await _api.patch('/me/profile', body: fields);
+    } catch (_) {
+      // Registration already succeeded; profile details can be edited later.
+    }
   }
 
   static Future<void> logout() async {

@@ -405,19 +405,6 @@ class _SelectPlayersScreenState
               child: const Text('Save Match', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
             ),
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () {},
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF1A6BFF)),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              child: const Text('Mark as Completed', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1A6BFF))),
-            ),
-          ),
         ],
       ),
     );

@@ -60,14 +60,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _socialNotAvailable() {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content:
-          Text('Social login is not available yet. Please use email or phone.'),
-      backgroundColor: Color(0xFF7B2FFF),
-    ));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -294,26 +286,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 10),
 
-              // ── Forgot Password ──
-              Align(
-                alignment: Alignment.centerRight,
-                child: GestureDetector(
-                  onTap: () =>
-                      _showForgotPassword(context),
-                  child: Text('Forgot Password?',
-                      style: TextStyle(
-                          color: _isPlayer
-                              ? AppColors.primary
-                              : const Color(
-                              0xFF00C853),
-                          fontSize: 13,
-                          fontWeight:
-                          FontWeight.w600)),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
               // ── Login Button ──
               SizedBox(
                 width: double.infinity,
@@ -349,53 +321,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 24),
 
-              // ── OR Divider ──
-              Row(children: [
-                Expanded(
-                    child: Divider(
-                        color: Colors.white10)),
-                const Padding(
-                  padding: EdgeInsets.symmetric(
-                      horizontal: 12),
-                  child: Text('or continue with',
-                      style: TextStyle(
-                          color: Colors.white38,
-                          fontSize: 13)),
-                ),
-                Expanded(
-                    child: Divider(
-                        color: Colors.white10)),
-              ]),
-
-              const SizedBox(height: 24),
-
-              // ── Social Buttons ──
-              Row(
-                mainAxisAlignment:
-                MainAxisAlignment.center,
-                children: [
-                  _SocialBtn(
-                    icon: Icons.g_mobiledata,
-                    color: const Color(0xFFDB4437),
-                    onTap: () => _socialNotAvailable(),
-                  ),
-                  const SizedBox(width: 16),
-                  _SocialBtn(
-                    icon: Icons.apple,
-                    color: Colors.white,
-                    onTap: () => _socialNotAvailable(),
-                  ),
-                  const SizedBox(width: 16),
-                  _SocialBtn(
-                    icon: Icons.facebook,
-                    color: const Color(0xFF1877F2),
-                    onTap: () => _socialNotAvailable(),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 32),
-
               // ── Sign Up Link ──
               Center(
                 child: GestureDetector(
@@ -428,119 +353,5 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _showForgotPassword(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF0F0F2A),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-              top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            24,
-            24,
-            24,
-            MediaQuery.of(context).viewInsets.bottom +
-                24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment:
-          CrossAxisAlignment.start,
-          children: [
-            const Text('Forgot Password',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            const Text(
-                'Enter your email to reset your password',
-                style: TextStyle(
-                    color: Colors.white54,
-                    fontSize: 13)),
-            const SizedBox(height: 16),
-            TextField(
-              style: const TextStyle(
-                  color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Enter your email',
-                hintStyle: const TextStyle(
-                    color: Colors.white24),
-                filled: true,
-                fillColor: Colors.white10,
-                border: OutlineInputBorder(
-                  borderRadius:
-                  BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(
-                    content:
-                    Text('Reset link sent! 📧'),
-                    backgroundColor:
-                    AppColors.primary,
-                  ));
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  padding:
-                  const EdgeInsets.symmetric(
-                      vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius:
-                      BorderRadius.circular(12)),
-                ),
-                child: const Text(
-                    'Send Reset Link',
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight:
-                        FontWeight.w700)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
-class _SocialBtn extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _SocialBtn({
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 60,
-        height: 60,
-        decoration: BoxDecoration(
-          color: const Color(0xFF0F0F2A),
-          borderRadius: BorderRadius.circular(14),
-          border:
-          Border.all(color: Colors.white10),
-        ),
-        child:
-        Icon(icon, color: color, size: 30),
-      ),
-    );
-  }
-}

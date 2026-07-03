@@ -209,21 +209,6 @@ class ShareLeagueCodeScreen extends StatelessWidget {
                             ]),
                           ),
                         ),
-                        Container(height: 50, width: 1, color: Colors.white10),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () {},
-                            child: Column(children: [
-                              Container(
-                                width: 56, height: 56,
-                                decoration: BoxDecoration(color: Colors.white10, shape: BoxShape.circle),
-                                child: const Icon(Icons.more_horiz, color: Colors.white60, size: 28),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text('More', style: TextStyle(color: Colors.white60, fontSize: 12)),
-                            ]),
-                          ),
-                        ),
                       ]),
                     ),
                   ],

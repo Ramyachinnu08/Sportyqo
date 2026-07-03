@@ -269,13 +269,7 @@ class _CoachPerformanceScreenState
                                           color: Colors.white38,
                                           size: 18),
                                     )
-                                        : GestureDetector(
-                                      onTap: () {},
-                                      child: const Icon(
-                                          Icons.qr_code_scanner,
-                                          color: Colors.white38,
-                                          size: 20),
-                                    ),
+                                        : null,
                                     border: InputBorder.none,
                                     contentPadding:
                                     const EdgeInsets.symmetric(

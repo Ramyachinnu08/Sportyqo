@@ -1013,11 +1013,6 @@ class _MessageScreenState extends State<_MessageScreen> {
                     ],
                   ),
                 ),
-                GestureDetector(
-                  onTap: () {},
-                  child: const Icon(Icons.more_vert,
-                      color: Colors.white54, size: 22),
-                ),
               ]),
             ),
 
@@ -1139,20 +1134,6 @@ class _MessageScreenState extends State<_MessageScreen> {
                 Border(top: BorderSide(color: Colors.white10)),
               ),
               child: Row(children: [
-                GestureDetector(
-                  onTap: () {},
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: Colors.white10,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.attach_file,
-                        color: Colors.white54, size: 20),
-                  ),
-                ),
-                const SizedBox(width: 8),
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(

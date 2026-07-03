@@ -17,7 +17,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  bool _darkMode = true;
   bool _notificationsOn = true;
 
   Map<String, dynamic>? _profile;
@@ -40,6 +39,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             .cast<Map<String, dynamic>>();
         _recommendations = (data['recommendations'] as List<dynamic>? ?? [])
             .cast<Map<String, dynamic>>();
+        final settings = data['settings'] as Map<String, dynamic>?;
+        _notificationsOn = settings?['notifications'] != false;
       });
     } catch (_) {
       // keep placeholders when offline
@@ -794,19 +795,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 16),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.dark_mode_outlined, color: AppColors.primary),
-                title: const Text('Dark Mode', style: TextStyle(color: Colors.white)),
-                trailing: Switch(
-                  value: _darkMode,
-                  onChanged: (val) {
-                    setModalState(() => _darkMode = val);
-                    setState(() => _darkMode = val);
-                  },
-                  activeColor: AppColors.primary,
-                ),
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.notifications_outlined, color: AppColors.primary),
                 title: const Text('Notifications', style: TextStyle(color: Colors.white)),
                 trailing: Switch(
@@ -814,6 +802,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onChanged: (val) {
                     setModalState(() => _notificationsOn = val);
                     setState(() => _notificationsOn = val);
+                    final settings = Map<String, dynamic>.from(
+                        _profile?['settings'] as Map<String, dynamic>? ??
+                            <String, dynamic>{});
+                    settings['notifications'] = val;
+                    SportyQoApi.updateProfile({'settings': settings})
+                        .then((updated) {
+                      if (mounted) setState(() => _profile = {..._profile ?? {}, 'settings': updated['settings']});
+                    }).catchError((_) {
+                      if (!mounted) return;
+                      setState(() => _notificationsOn = !val);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text(
+                            'Could not save the notification setting. Check your connection.'),
+                        backgroundColor: Colors.redAccent,
+                      ));
+                    });
                   },
                   activeColor: AppColors.primary,
                 ),
