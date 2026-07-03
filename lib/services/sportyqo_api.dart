@@ -37,6 +37,52 @@ class SportyQoApi {
         as Map<String, dynamic>;
   }
 
+  /// Partial profile update (edit-profile sheet). Any field may be omitted.
+  static Future<Map<String, dynamic>> updateProfile(
+      Map<String, dynamic> fields) async {
+    return await _api.patch('/me/profile', body: fields)
+        as Map<String, dynamic>;
+  }
+
+  // ── Academy history (editable "Academy Experience" list) ────────────────
+
+  static Future<List<dynamic>> academyHistory() async {
+    return await _api.get('/me/academy') as List<dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> addAcademy({
+    required String academy,
+    String? role,
+    int? startYear,
+    int? endYear,
+  }) async {
+    return await _api.post('/me/academy', body: {
+      'academy': academy,
+      if (role != null && role.isNotEmpty) 'role': role,
+      if (startYear != null) 'startYear': startYear,
+      if (endYear != null) 'endYear': endYear,
+    }) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> updateAcademy(
+    String id, {
+    required String academy,
+    String? role,
+    int? startYear,
+    int? endYear,
+  }) async {
+    return await _api.patch('/me/academy/$id', body: {
+      'academy': academy,
+      if (role != null && role.isNotEmpty) 'role': role,
+      if (startYear != null) 'startYear': startYear,
+      if (endYear != null) 'endYear': endYear,
+    }) as Map<String, dynamic>;
+  }
+
+  static Future<void> deleteAcademy(String id) async {
+    await _api.delete('/me/academy/$id');
+  }
+
   // ── Coach ─────────────────────────────────────────────────────────────
 
   static Future<Map<String, dynamic>> coachDashboard() async {

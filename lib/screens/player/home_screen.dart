@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/sportyqo_api.dart';
+import '../../services/api_client.dart';
 import 'dugout_screen.dart';
 import 'playbook_screen.dart';
 import 'performance_screen.dart';
@@ -91,11 +92,11 @@ class _HomeTab extends StatefulWidget {
 }
 
 class _HomeTabState extends State<_HomeTab> {
-  String? _activeLeague = 'U16 Division • Division 1';
-  String? _activeTeam = 'Falcons FC';
+  String? _activeLeague;
+  String? _activeTeam;
 
-  // Live data from GET /players/:id/home (falls back to mocks while loading
-  // or if the backend is unreachable).
+  // Live data from GET /players/:id/home.
+  String? _fullName;
   String? _firstName;
   String? _liveLeagueId;
   Map<String, dynamic>? _upcomingMatch;
@@ -103,6 +104,9 @@ class _HomeTabState extends State<_HomeTab> {
   String? _livePlayerCode;
   int? _liveQoScore;
   int _unreadCount = 0;
+  int? _monthDelta; // Qo change vs the previous month (from /performance)
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -111,6 +115,10 @@ class _HomeTabState extends State<_HomeTab> {
   }
 
   Future<void> _loadHome() async {
+    setState(() {
+      _loading = _fullName == null; // full spinner only on first load
+      _error = null;
+    });
     try {
       final data = await SportyQoApi.playerHome();
       if (!mounted) return;
@@ -122,17 +130,50 @@ class _HomeTabState extends State<_HomeTab> {
       setState(() {
         _upcomingMatch = data['upcomingMatch'] as Map<String, dynamic>?;
         _liveSportName = sport?['name'] as String?;
+        _fullName = player?['fullName'] as String?;
         _firstName =
             (player?['fullName'] as String?)?.split(' ').first;
         _livePlayerCode = player?['playerId'] as String?;
-        _liveQoScore = player?['qoScore'] as int?;
+        _liveQoScore = (player?['qoScore'] as num?)?.toInt();
         _liveLeagueId = league?['id'] as String?;
         _activeLeague = league?['name'] as String?;
         _activeTeam = team?['name'] as String?;
         _unreadCount = (notif?['unreadCount'] as int?) ?? 0;
+        _loading = false;
+      });
+      _loadMonthDelta();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.code == 'NETWORK'
+            ? 'Could not reach the SportyQo server.\nCheck your connection and try again.'
+            : e.message;
       });
     } catch (_) {
-      // Not logged in / offline: keep the existing mock visuals.
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Something went wrong while loading your home.';
+      });
+    }
+  }
+
+  /// Best-effort: "+X this month" badge under the Qo score.
+  Future<void> _loadMonthDelta() async {
+    try {
+      final perf = await SportyQoApi.playerPerformance();
+      if (!mounted) return;
+      final journey = (perf['qoJourney'] as List<dynamic>? ?? [])
+          .cast<Map<String, dynamic>>();
+      if (journey.length >= 2) {
+        final last = (journey.last['qoScore'] as num?)?.toInt() ?? 0;
+        final prev =
+            (journey[journey.length - 2]['qoScore'] as num?)?.toInt() ?? 0;
+        setState(() => _monthDelta = last - prev);
+      }
+    } catch (_) {
+      // Non-critical decoration; skip silently.
     }
   }
 
@@ -154,6 +195,21 @@ class _HomeTabState extends State<_HomeTab> {
     if (dt == null) return 'TBD';
     final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
     return '$h:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
+  }
+
+  String get _tierName {
+    final score = _liveQoScore ?? 0;
+    if (score >= 750) return 'Purple Card';
+    if (score >= 500) return 'Blue Card';
+    if (score >= 250) return 'Silver Card';
+    return 'Bronze Card';
+  }
+
+  static String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return '?';
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return (parts.first[0] + parts.last[0]).toUpperCase();
   }
 
   String _getSportRole(String sport) {
@@ -179,58 +235,60 @@ class _HomeTabState extends State<_HomeTab> {
     }
   }
 
-  String _getTeam1(String sport) {
-    switch (sport) {
-      case 'Football':
-        return 'Alpha FC';
-      case 'Cricket':
-        return 'Alpha Warriors';
-      case 'Basketball':
-        return 'Alpha Hoops';
-      case 'Volleyball':
-        return 'Alpha VB';
-      case 'Swimming':
-        return 'Alpha Swim';
-      case 'Badminton':
-        return 'Alpha Badminton';
-      case 'Tennis':
-        return 'Alpha Tennis';
-      case 'Kabaddi':
-        return 'Alpha Raiders';
-      default:
-        return 'Alpha Warriors';
-    }
-  }
 
-  String _getTeam2(String sport) {
-    switch (sport) {
-      case 'Football':
-        return 'Thunder FC';
-      case 'Cricket':
-        return 'Thunder Strikers';
-      case 'Basketball':
-        return 'Thunder Hoops';
-      case 'Volleyball':
-        return 'Thunder VB';
-      case 'Swimming':
-        return 'Thunder Swim';
-      case 'Badminton':
-        return 'Thunder Badminton';
-      case 'Tennis':
-        return 'Thunder Tennis';
-      case 'Kabaddi':
-        return 'Thunder Raiders';
-      default:
-        return 'Thunder Strikers';
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0A0A1A),
+        body: Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+    if (_error != null && _fullName == null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0A0A1A),
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.wifi_off_rounded,
+                      color: Colors.white38, size: 44),
+                  const SizedBox(height: 14),
+                  Text(_error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          color: Colors.white54, fontSize: 13, height: 1.5)),
+                  const SizedBox(height: 18),
+                  ElevatedButton.icon(
+                    onPressed: _loadHome,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Retry'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A1A),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: RefreshIndicator(
+          color: AppColors.primary,
+          backgroundColor: const Color(0xFF0F0F2A),
+          onRefresh: _loadHome,
+          child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -243,7 +301,7 @@ class _HomeTabState extends State<_HomeTab> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(children: [
-                          Text(_firstName ?? 'Alex',
+                          Text(_firstName ?? '—',
                               style: const TextStyle(
                                   fontSize: 30,
                                   fontWeight: FontWeight.w800,
@@ -314,22 +372,33 @@ class _HomeTabState extends State<_HomeTab> {
 
                   const SizedBox(width: 10),
 
-                  // Profile Picture
+                  // Profile Picture (initials — no hardcoded stock photo)
                   GestureDetector(
                     onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (_) => const _ProfileImageScreen())),
+                            builder: (_) => _ProfileImageScreen(
+                                  name: _fullName ?? 'Player',
+                                  subtitle: [
+                                    if (_activeLeague != null) _activeLeague!,
+                                    if (_activeTeam != null) _activeTeam!,
+                                  ].join(' • '),
+                                ))),
                     child: Container(
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.primary, width: 2),
-                        image: const DecorationImage(
-                          image: NetworkImage(
-                              'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=faces'),
-                          fit: BoxFit.cover,
+                        color: const Color(0xFF1A1A3A),
+                      ),
+                      child: Center(
+                        child: Text(
+                          _initials(_fullName ?? ''),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800),
                         ),
                       ),
                     ),
@@ -368,7 +437,7 @@ class _HomeTabState extends State<_HomeTab> {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Text('${_liveQoScore ?? 720}',
+                            Text('${_liveQoScore ?? 0}',
                                 style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 54,
@@ -402,23 +471,31 @@ class _HomeTabState extends State<_HomeTab> {
                                   decoration: BoxDecoration(
                                       color: AppColors.primary, shape: BoxShape.circle)),
                               const SizedBox(width: 6),
-                              const Text('Purple Card',
-                                  style: TextStyle(
+                              Text(_tierName,
+                                  style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600)),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Row(children: const [
-                          Icon(Icons.arrow_upward, color: Color(0xFF7B2FFF), size: 14),
-                          Text('+35 this month',
-                              style: TextStyle(
-                                  color: Color(0xFF7B2FFF),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500)),
-                        ]),
+                        if (_monthDelta != null && _monthDelta != 0) ...[
+                          const SizedBox(height: 8),
+                          Row(children: [
+                            Icon(
+                                _monthDelta! > 0
+                                    ? Icons.arrow_upward
+                                    : Icons.arrow_downward,
+                                color: const Color(0xFF7B2FFF),
+                                size: 14),
+                            Text(
+                                '${_monthDelta! > 0 ? '+' : ''}$_monthDelta this month',
+                                style: const TextStyle(
+                                    color: Color(0xFF7B2FFF),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500)),
+                          ]),
+                        ],
                       ],
                     ),
                   ),
@@ -532,7 +609,34 @@ class _HomeTabState extends State<_HomeTab> {
 
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Container(
+                child: _upcomingMatch == null
+                    ? Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 28),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          color: const Color(0xFF13132B),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: Column(children: const [
+                          Icon(Icons.event_busy,
+                              color: Colors.white38, size: 32),
+                          SizedBox(height: 10),
+                          Text('No upcoming matches',
+                              style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600)),
+                          SizedBox(height: 4),
+                          Text(
+                              'Your next match will show up here once it is scheduled.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  color: Colors.white38, fontSize: 12)),
+                        ]),
+                      )
+                    : Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
                     color: const Color(0xFF13132B),
@@ -547,6 +651,8 @@ class _HomeTabState extends State<_HomeTab> {
                             child: Image.network(
                               'https://i.ibb.co/ksm7Jj8f/1a.png',
                               fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                  color: const Color(0xFF13132B)),
                             ),
                           ),
                           Positioned.fill(
@@ -578,8 +684,7 @@ class _HomeTabState extends State<_HomeTab> {
                                   Text((_upcomingMatch?['homeTeam']
                                               as Map<String, dynamic>?)?['name']
                                           as String? ??
-                                      _getTeam1(_liveSportName ??
-                                          widget.selectedSport),
+                                      'TBD',
                                       style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 13,
@@ -600,8 +705,7 @@ class _HomeTabState extends State<_HomeTab> {
                                   Text((_upcomingMatch?['awayTeam']
                                               as Map<String, dynamic>?)?['name']
                                           as String? ??
-                                      _getTeam2(_liveSportName ??
-                                          widget.selectedSport),
+                                      'TBD',
                                       style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 13,
@@ -685,6 +789,8 @@ class _HomeTabState extends State<_HomeTab> {
                             child: Image.network(
                               'https://i.ibb.co/QjvzBGMY/1aa.png',
                               fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                  color: const Color(0xFF13132B)),
                             ),
                           ),
                           Positioned.fill(
@@ -770,6 +876,7 @@ class _HomeTabState extends State<_HomeTab> {
 
               const SizedBox(height: 32),
             ],
+          ),
           ),
         ),
       ),
@@ -1724,7 +1831,16 @@ class _StandingRow extends StatelessWidget {
 // ── Profile Image Screen ──────────────────────────────────────────────
 
 class _ProfileImageScreen extends StatelessWidget {
-  const _ProfileImageScreen();
+  final String name;
+  final String subtitle;
+  const _ProfileImageScreen({required this.name, this.subtitle = ''});
+
+  String get _initials {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return '?';
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return (parts.first[0] + parts.last[0]).toUpperCase();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1757,11 +1873,14 @@ class _ProfileImageScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: AppColors.primary, width: 3),
-                  image: const DecorationImage(
-                    image: NetworkImage(
-                        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop&crop=faces'),
-                    fit: BoxFit.cover,
-                  ),
+                  color: const Color(0xFF1A1A3A),
+                ),
+                child: Center(
+                  child: Text(_initials,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 48,
+                          fontWeight: FontWeight.w800)),
                 ),
               ),
               Positioned(
@@ -1780,11 +1899,17 @@ class _ProfileImageScreen extends StatelessWidget {
               ),
             ]),
             const SizedBox(height: 24),
-            const Text('Alex Johnson',
-                style: TextStyle(
+            Text(name,
+                style: const TextStyle(
                     color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
-            const Text('U16 • Forward • Falcons FC',
-                style: TextStyle(color: Colors.white54, fontSize: 13)),
+            if (subtitle.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(subtitle,
+                    textAlign: TextAlign.center,
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 13)),
+              ),
             const Spacer(),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
@@ -1794,7 +1919,8 @@ class _ProfileImageScreen extends StatelessWidget {
                   child: ElevatedButton.icon(
                     onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                            content: Text('Camera opened! 📷'),
+                            content: Text(
+                                'Photo upload is coming soon in a future update.'),
                             backgroundColor: AppColors.primary)),
                     icon: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
                     label: const Text('Take Photo',
@@ -1815,7 +1941,8 @@ class _ProfileImageScreen extends StatelessWidget {
                   child: ElevatedButton.icon(
                     onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                            content: Text('Gallery opened! 🖼️'),
+                            content: Text(
+                                'Photo upload is coming soon in a future update.'),
                             backgroundColor: AppColors.primary)),
                     icon: const Icon(Icons.photo_library, color: Colors.white, size: 20),
                     label: const Text('Choose from Gallery',

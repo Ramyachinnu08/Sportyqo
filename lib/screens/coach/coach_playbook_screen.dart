@@ -404,14 +404,19 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
                         child: const Icon(Icons.add, color: Colors.white, size: 22),
                       ),
                       const SizedBox(width: 14),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text('Add New', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                          Text('Add training photos,\nvideos and more', style: TextStyle(color: Colors.white38, fontSize: 11)),
-                        ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text('Add New', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                            Text('Add training photos,\nvideos and more',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: Colors.white38, fontSize: 11)),
+                          ],
+                        ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 8),
                       const Icon(Icons.chevron_right, color: Colors.white38),
                     ]),
                   ),

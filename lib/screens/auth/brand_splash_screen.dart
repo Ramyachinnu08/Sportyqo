@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'splash_screen.dart';
+import '../../services/api_client.dart';
+import '../player/home_screen.dart';
+import '../coach/coach_home_screen.dart';
 
 class BrandSplashScreen extends StatefulWidget {
   const BrandSplashScreen({super.key});
@@ -35,17 +38,24 @@ class _BrandSplashScreenState extends State<BrandSplashScreen>
     _controller.forward();
 
     Timer(const Duration(milliseconds: 2200), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 600),
-            pageBuilder: (_, animation, __) => FadeTransition(
-              opacity: animation,
-              child: const SplashScreen(),
-            ),
+      if (!mounted) return;
+      // A session restored in main() means the user is already logged in:
+      // skip onboarding and go straight to the right home screen.
+      final api = ApiClient.instance;
+      final Widget next = !api.isLoggedIn
+          ? const SplashScreen()
+          : api.role == 'COACH'
+              ? const CoachHomeScreen()
+              : const HomeScreen();
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          transitionDuration: const Duration(milliseconds: 600),
+          pageBuilder: (_, animation, __) => FadeTransition(
+            opacity: animation,
+            child: next,
           ),
-        );
-      }
+        ),
+      );
     });
   }
 

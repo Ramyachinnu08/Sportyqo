@@ -4,6 +4,8 @@ import '../../theme/app_theme.dart';
 import '../auth/choose_role_screen.dart';
 import '../../services/sportyqo_api.dart';
 import '../../services/auth_service.dart';
+import '../../services/api_client.dart';
+import '../shared/chat_screens.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String? playerId;
@@ -15,7 +17,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  bool _isFollowing = false;
   bool _darkMode = true;
   bool _notificationsOn = true;
 
@@ -217,16 +218,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(children: const [
-                            Icon(Icons.school, color: AppColors.primary, size: 18),
-                            SizedBox(width: 8),
-                            Text('Academy Experience',
+                          Row(children: [
+                            const Icon(Icons.school,
+                                color: AppColors.primary, size: 18),
+                            const SizedBox(width: 8),
+                            const Text('Academy Experience',
                                 style: TextStyle(
-                                    color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15)),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: () => _showAcademyForm(context),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                      color:
+                                          AppColors.primary.withOpacity(0.4)),
+                                ),
+                                child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Icon(Icons.add,
+                                          color: AppColors.primary, size: 14),
+                                      SizedBox(width: 2),
+                                      Text('Add',
+                                          style: TextStyle(
+                                              color: AppColors.primary,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600)),
+                                    ]),
+                              ),
+                            ),
                           ]),
                           const SizedBox(height: 14),
                           if (_academyHistory.isEmpty)
-                            const Text('No academy history added yet',
+                            const Text(
+                                'No academy history yet — tap "Add" to add your first entry',
                                 style: TextStyle(
                                     color: Colors.white38, fontSize: 13))
                           else
@@ -239,14 +271,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 if (i > 0)
                                   const Divider(
                                       color: Colors.white10, height: 20),
-                                _AcademyTile(
-                                  logo: _initials(
-                                      a['academy'] as String? ?? '?'),
-                                  logoColor: const Color(0xFF1A3A5C),
-                                  name: a['academy'] as String? ?? '',
-                                  year: '$startYear – $endYear',
-                                  location: a['role'] as String? ?? '',
-                                  isText: true,
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () =>
+                                      _showAcademyForm(context, entry: a),
+                                  child: _AcademyTile(
+                                    logo: _initials(
+                                        a['academy'] as String? ?? '?'),
+                                    logoColor: const Color(0xFF1A3A5C),
+                                    name: a['academy'] as String? ?? '',
+                                    year: startYear.isEmpty && a['endYear'] == null
+                                        ? '—'
+                                        : '$startYear – $endYear',
+                                    location: a['role'] as String? ?? '',
+                                    isText: true,
+                                  ),
                                 ),
                               ]);
                             }),
@@ -320,38 +359,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Material(
                       color: Colors.transparent,
                       child: InkWell(
-                        onTap: () {
-                          setState(() => _isFollowing = !_isFollowing);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(_isFollowing
-                                  ? 'You are now following ${_profile?['fullName'] ?? 'this player'}'
-                                  : 'You unfollowed ${_profile?['fullName'] ?? 'this player'}'),
-                              backgroundColor: AppColors.primary,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        },
+                        onTap: () => _showEditProfile(context),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _isFollowing
-                                    ? Icons.person_remove_outlined
-                                    : Icons.person_add_outlined,
-                                color: _isFollowing ? Colors.white60 : AppColors.primary,
-                                size: 22,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _isFollowing ? 'Following' : 'Follow',
-                                style: TextStyle(
-                                    color: _isFollowing ? Colors.white60 : AppColors.primary,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600),
-                              ),
+                            children: const [
+                              Icon(Icons.edit_outlined,
+                                  color: AppColors.primary, size: 22),
+                              SizedBox(height: 4),
+                              Text('Edit Profile',
+                                  style: TextStyle(
+                                      color: AppColors.primary,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600)),
                             ],
                           ),
                         ),
@@ -363,16 +384,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Material(
                       color: Colors.transparent,
                       child: InkWell(
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  'Opening chat with ${_profile?['fullName'] ?? 'player'}...'),
-                              backgroundColor: AppColors.primary,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        },
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const ChatListScreen()),
+                        ),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6),
                           child: Column(
@@ -429,6 +445,282 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Add or edit an academy-experience entry. Pass [entry] to edit.
+  void _showAcademyForm(BuildContext context, {Map<String, dynamic>? entry}) {
+    final academyCtrl =
+        TextEditingController(text: entry?['academy'] as String? ?? '');
+    final roleCtrl =
+        TextEditingController(text: entry?['role'] as String? ?? '');
+    final startCtrl =
+        TextEditingController(text: entry?['startYear']?.toString() ?? '');
+    final endCtrl =
+        TextEditingController(text: entry?['endYear']?.toString() ?? '');
+    bool saving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F0F2A),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 24,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Text(
+                      entry == null
+                          ? 'Add Academy Experience'
+                          : 'Edit Academy Experience',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800)),
+                  const Spacer(),
+                  if (entry != null)
+                    GestureDetector(
+                      onTap: saving
+                          ? null
+                          : () async {
+                              setModalState(() => saving = true);
+                              try {
+                                await SportyQoApi.deleteAcademy(
+                                    entry['id'] as String);
+                                if (!sheetContext.mounted) return;
+                                Navigator.pop(sheetContext);
+                                _load();
+                              } on ApiException catch (e) {
+                                setModalState(() => saving = false);
+                                if (!sheetContext.mounted) return;
+                                ScaffoldMessenger.of(sheetContext)
+                                    .showSnackBar(SnackBar(
+                                  content: Text(e.message),
+                                  backgroundColor: Colors.redAccent,
+                                ));
+                              }
+                            },
+                      child: const Icon(Icons.delete_outline,
+                          color: AppColors.error, size: 22),
+                    ),
+                ]),
+                const SizedBox(height: 18),
+                _formField('Academy / Club name *', academyCtrl,
+                    hint: 'e.g. Falcons Cricket Academy'),
+                const SizedBox(height: 12),
+                _formField('Role', roleCtrl, hint: 'e.g. Top-order Batsman'),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                      child: _formField('Start year', startCtrl,
+                          hint: 'e.g. 2022', number: true)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                      child: _formField('End year', endCtrl,
+                          hint: 'Leave empty if current', number: true)),
+                ]),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            final academy = academyCtrl.text.trim();
+                            if (academy.length < 2) {
+                              ScaffoldMessenger.of(sheetContext)
+                                  .showSnackBar(const SnackBar(
+                                content:
+                                    Text('Enter the academy or club name'),
+                                backgroundColor: Colors.redAccent,
+                              ));
+                              return;
+                            }
+                            final start =
+                                int.tryParse(startCtrl.text.trim());
+                            final end = int.tryParse(endCtrl.text.trim());
+                            setModalState(() => saving = true);
+                            try {
+                              if (entry == null) {
+                                await SportyQoApi.addAcademy(
+                                  academy: academy,
+                                  role: roleCtrl.text.trim(),
+                                  startYear: start,
+                                  endYear: end,
+                                );
+                              } else {
+                                await SportyQoApi.updateAcademy(
+                                  entry['id'] as String,
+                                  academy: academy,
+                                  role: roleCtrl.text.trim(),
+                                  startYear: start,
+                                  endYear: end,
+                                );
+                              }
+                              if (!sheetContext.mounted) return;
+                              Navigator.pop(sheetContext);
+                              _load();
+                            } on ApiException catch (e) {
+                              setModalState(() => saving = false);
+                              if (!sheetContext.mounted) return;
+                              ScaffoldMessenger.of(sheetContext)
+                                  .showSnackBar(SnackBar(
+                                content: Text(e.message),
+                                backgroundColor: Colors.redAccent,
+                              ));
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2))
+                        : Text(entry == null ? 'Add' : 'Save changes',
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Edit the basic profile fields via PATCH /me/profile.
+  void _showEditProfile(BuildContext context) {
+    final locationCtrl =
+        TextEditingController(text: _profile?['location'] as String? ?? '');
+    final schoolCtrl = TextEditingController(
+        text: _profile?['schoolAcademy'] as String? ?? '');
+    final clubCtrl =
+        TextEditingController(text: _profile?['club'] as String? ?? '');
+    final bioCtrl =
+        TextEditingController(text: _profile?['bio'] as String? ?? '');
+    bool saving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F0F2A),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 24,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Edit Profile',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800)),
+                const SizedBox(height: 18),
+                _formField('Location', locationCtrl,
+                    hint: 'e.g. Bangalore, Karnataka'),
+                const SizedBox(height: 12),
+                _formField('School / Academy', schoolCtrl,
+                    hint: 'e.g. Falcons Cricket Academy'),
+                const SizedBox(height: 12),
+                _formField('Club', clubCtrl, hint: 'e.g. Falcons FC'),
+                const SizedBox(height: 12),
+                _formField('Bio', bioCtrl,
+                    hint: 'Tell people about your game', maxLines: 3),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            setModalState(() => saving = true);
+                            try {
+                              await SportyQoApi.updateProfile({
+                                'location': locationCtrl.text.trim(),
+                                'schoolAcademy': schoolCtrl.text.trim(),
+                                'club': clubCtrl.text.trim(),
+                                'bio': bioCtrl.text.trim(),
+                              });
+                              if (!sheetContext.mounted) return;
+                              Navigator.pop(sheetContext);
+                              _load();
+                            } on ApiException catch (e) {
+                              setModalState(() => saving = false);
+                              if (!sheetContext.mounted) return;
+                              ScaffoldMessenger.of(sheetContext)
+                                  .showSnackBar(SnackBar(
+                                content: Text(e.message),
+                                backgroundColor: Colors.redAccent,
+                              ));
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2))
+                        : const Text('Save changes',
+                            style: TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _formField(String label, TextEditingController ctrl,
+      {String? hint, bool number = false, int maxLines = 1}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: ctrl,
+          maxLines: maxLines,
+          keyboardType: number ? TextInputType.number : TextInputType.text,
+          style: const TextStyle(color: Colors.white, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          ),
+        ),
+      ],
+    );
+  }
+
   void _showPhotoOptions(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -451,7 +743,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Camera opened! 📷'),
+                    content: Text(
+                        'Photo upload is coming soon in a future update.'),
                     backgroundColor: AppColors.primary,
                   ),
                 );
@@ -465,7 +758,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Gallery opened! 🖼️'),
+                    content: Text(
+                        'Photo upload is coming soon in a future update.'),
                     backgroundColor: AppColors.primary,
                   ),
                 );

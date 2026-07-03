@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/sportyqo_api.dart';
+import '../../services/api_client.dart';
 
 class PerformanceScreen extends StatefulWidget {
   const PerformanceScreen({super.key});
@@ -11,6 +12,8 @@ class PerformanceScreen extends StatefulWidget {
 
 class _PerformanceScreenState extends State<PerformanceScreen> {
   bool _loading = true;
+  String? _error;
+  String _journeyRange = 'This Season'; // This Season | Last 6 Months | Last 3 Months
   int _qoScore = 0;
   int _weekPoints = 0;
   Map<String, dynamic>? _ranking;
@@ -38,6 +41,10 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
   }
 
   Future<void> _load() async {
+    setState(() {
+      _loading = _qoScore == 0 && _journey.isEmpty;
+      _error = null;
+    });
     try {
       final data = await SportyQoApi.playerPerformance();
       if (!mounted) return;
@@ -60,18 +67,46 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
         _weekPoints = week;
         _loading = false;
       });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.code == 'NETWORK'
+            ? 'Could not reach the SportyQo server.\nCheck your connection and try again.'
+            : e.message;
+      });
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Something went wrong while loading your performance.';
+      });
     }
   }
 
-  String _fmtDate(String? iso) {
+  /// Journey points filtered by the selected range dropdown.
+  List<Map<String, dynamic>> get _visibleJourney {
+    switch (_journeyRange) {
+      case 'Last 3 Months':
+        return _journey.length <= 3
+            ? _journey
+            : _journey.sublist(_journey.length - 3);
+      case 'Last 6 Months':
+        return _journey.length <= 6
+            ? _journey
+            : _journey.sublist(_journey.length - 6);
+      default:
+        return _journey;
+    }
+  }
+
+  static String _fmtDate(String? iso) {
     final dt = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
     if (dt == null) return '';
     return '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}';
   }
 
-  List<String> _statStrings(Map<String, dynamic>? stats) {
+  static List<String> _statStrings(Map<String, dynamic>? stats) {
     if (stats == null) return [];
     final out = <String>[];
     void add(String key, String singular, String plural) {
@@ -96,10 +131,45 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
             child: CircularProgressIndicator(color: AppColors.primary)),
       );
     }
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0A0A1A),
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.wifi_off_rounded,
+                      color: Colors.white38, size: 44),
+                  const SizedBox(height: 14),
+                  Text(_error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          color: Colors.white54, fontSize: 13, height: 1.5)),
+                  const SizedBox(height: 18),
+                  ElevatedButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A1A),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: RefreshIndicator(
+          color: AppColors.primary,
+          backgroundColor: const Color(0xFF0F0F2A),
+          onRefresh: _load,
+          child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -224,32 +294,69 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                     Row(children: [
                       const Text('Qo Journey', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
                       const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(20)),
-                        child: Row(children: const [
-                          Text('This Season', style: TextStyle(color: Colors.white60, fontSize: 12)),
-                          Icon(Icons.keyboard_arrow_down, color: Colors.white38, size: 16),
-                        ]),
+                      PopupMenuButton<String>(
+                        color: const Color(0xFF13132B),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: const BorderSide(color: Colors.white10)),
+                        onSelected: (v) =>
+                            setState(() => _journeyRange = v),
+                        itemBuilder: (_) => const [
+                          'This Season',
+                          'Last 6 Months',
+                          'Last 3 Months',
+                        ]
+                            .map((v) => PopupMenuItem<String>(
+                                  value: v,
+                                  child: Text(v,
+                                      style: TextStyle(
+                                          color: v == _journeyRange
+                                              ? AppColors.primary
+                                              : Colors.white70,
+                                          fontSize: 13,
+                                          fontWeight: v == _journeyRange
+                                              ? FontWeight.w700
+                                              : FontWeight.w400)),
+                                ))
+                            .toList(),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                              color: Colors.white10,
+                              borderRadius: BorderRadius.circular(20)),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Text(_journeyRange,
+                                style: const TextStyle(
+                                    color: Colors.white60, fontSize: 12)),
+                            const Icon(Icons.keyboard_arrow_down,
+                                color: Colors.white38, size: 16),
+                          ]),
+                        ),
                       ),
                     ]),
                     const SizedBox(height: 16),
-                    if (_journey.length >= 2) ...[
+                    if (_visibleJourney.length >= 2) ...[
                       SizedBox(
                         height: 140,
                         child: CustomPaint(
                             painter: _PerformanceGraphPainter(
-                                values: _journey
+                                values: _visibleJourney
                                     .map((j) =>
                                         ((j['qoScore'] as num?) ?? 0)
                                             .toDouble())
-                                    .toList()),
+                                    .toList(),
+                                lastValueLabel:
+                                    '${(_visibleJourney.last['qoScore'] as num?)?.toInt() ?? 0}',
+                                lastDateLabel: _visibleJourney.last['label']
+                                        as String? ??
+                                    ''),
                             size: const Size(double.infinity, 140)),
                       ),
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: _journey
+                        children: _visibleJourney
                             .map((j) => Text(j['label'] as String? ?? '',
                                 style: const TextStyle(
                                     color: Colors.white38, fontSize: 10)))
@@ -273,9 +380,25 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
               // ── Recent Matches ──
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Text('Recent Matches', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
-                  Text('View All', style: TextStyle(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.w600)),
+                children: [
+                  const Text('Recent Matches',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16)),
+                  GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) =>
+                              _AllRecentMatchesScreen(matches: _recent)),
+                    ),
+                    child: const Text('View All',
+                        style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                  ),
                 ],
               ),
 
@@ -296,7 +419,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
                               color: Colors.white54, fontSize: 14))),
                 )
               else
-                ..._recent.map((r) {
+                ..._recent.take(3).map((r) {
                   final stats = _statStrings(r['stats'] as Map<String, dynamic>?);
                   final opponent = r['opponent'] as String? ?? 'Match';
                   final qp = (r['qoPoints'] as num?)?.toInt() ?? 0;
@@ -375,6 +498,7 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
 
               const SizedBox(height: 32),
             ],
+          ),
           ),
         ),
       ),
@@ -462,7 +586,13 @@ class _MatchTile extends StatelessWidget {
 
 class _PerformanceGraphPainter extends CustomPainter {
   final List<double> values;
-  _PerformanceGraphPainter({required this.values});
+  final String lastValueLabel;
+  final String lastDateLabel;
+  _PerformanceGraphPainter({
+    required this.values,
+    this.lastValueLabel = '',
+    this.lastDateLabel = '',
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -524,11 +654,19 @@ class _PerformanceGraphPainter extends CustomPainter {
       final y = points[i] * size.height;
       canvas.drawCircle(Offset(x, y), 5, Paint()..color = AppColors.primary..style = PaintingStyle.fill);
       canvas.drawCircle(Offset(x, y), 5, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.5);
-      if (i == points.length - 1) {
+      if (i == points.length - 1 && lastValueLabel.isNotEmpty) {
         final tp = TextPainter(
-          text: const TextSpan(children: [
-            TextSpan(text: '242\n', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
-            TextSpan(text: '18 May', style: TextStyle(color: Colors.white38, fontSize: 9)),
+          text: TextSpan(children: [
+            TextSpan(
+                text: '$lastValueLabel\n',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700)),
+            TextSpan(
+                text: lastDateLabel,
+                style:
+                    const TextStyle(color: Colors.white38, fontSize: 9)),
           ]),
           textDirection: TextDirection.ltr,
         )..layout();
@@ -540,4 +678,77 @@ class _PerformanceGraphPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _PerformanceGraphPainter oldDelegate) =>
       oldDelegate.values != values;
+}
+
+// ── All Recent Matches (View All) ─────────────────────────────────────
+
+class _AllRecentMatchesScreen extends StatelessWidget {
+  final List<Map<String, dynamic>> matches;
+  const _AllRecentMatchesScreen({required this.matches});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A1A),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Row(children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Icon(Icons.arrow_back_ios,
+                      color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 16),
+                const Text('All Matches',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800)),
+              ]),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: matches.isEmpty
+                  ? const Center(
+                      child: Text('No matches played yet',
+                          style: TextStyle(
+                              color: Colors.white54, fontSize: 14)))
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      itemCount: matches.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, i) {
+                        final r = matches[i];
+                        final stats = _PerformanceScreenState._statStrings(
+                            r['stats'] as Map<String, dynamic>?);
+                        final opponent = r['opponent'] as String? ?? 'Match';
+                        final qp = (r['qoPoints'] as num?)?.toInt() ?? 0;
+                        return _MatchTile(
+                          teamLetter: opponent.replaceFirst('vs ', '').isEmpty
+                              ? '?'
+                              : opponent.replaceFirst('vs ', '')[0],
+                          opponent: opponent,
+                          date: _PerformanceScreenState._fmtDate(
+                              r['playedAt'] as String?),
+                          stat1: stats.isNotEmpty ? stats[0] : '',
+                          stat2: stats.length > 1 ? stats[1] : '',
+                          badge: (r['resultSummary'] as String?)?.isNotEmpty ==
+                                  true
+                              ? r['resultSummary'] as String
+                              : 'Completed',
+                          points: qp >= 0 ? '+$qp' : '$qp',
+                          badgeColor: const Color(0xFF00C853),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

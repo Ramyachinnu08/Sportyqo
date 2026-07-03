@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/sportyqo_api.dart';
+import '../../services/api_client.dart';
+import '../shared/chat_screens.dart';
 
 class DugoutScreen extends StatefulWidget {
   const DugoutScreen({super.key});
@@ -26,11 +29,28 @@ class _DugoutScreenState extends State<DugoutScreen> {
 
   List<Map<String, dynamic>> _players = [];
   bool _loading = true;
+  String? _error;
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  /// Text changes hit the backend search (GET /players/discover?q=) after a
+  /// short debounce, so results are not limited to the first page loaded.
+  void _onSearchChanged(String v) {
+    setState(() => _searchQuery = v);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), _load);
   }
 
   static ({Color c1, Color c2, String emoji}) _sportStyle(String? sport) {
@@ -62,8 +82,15 @@ class _DugoutScreenState extends State<DugoutScreen> {
   }
 
   Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final data = await SportyQoApi.discoverPlayers();
+      final data = await SportyQoApi.discoverPlayers(
+        sport: _selectedFilter,
+        q: _searchQuery.trim(),
+      );
       if (!mounted) return;
       setState(() {
         _players = data.cast<Map<String, dynamic>>().map((r) {
@@ -86,14 +113,27 @@ class _DugoutScreenState extends State<DugoutScreen> {
             'emoji': (r['sportEmoji'] as String?) ?? st.emoji,
             'filter': sport ?? 'All',
             'verified': r['verified'] == true,
+            'isFollowing': r['isFollowing'] == true,
             'followers': _fmtCount((r['followers'] as num?)?.toInt() ?? 0),
             'matches': matches,
           };
         }).toList();
         _loading = false;
       });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.code == 'NETWORK'
+            ? 'Could not reach the SportyQo server.\nCheck your connection and try again.'
+            : e.message;
+      });
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Something went wrong while loading players.';
+      });
     }
   }
 
@@ -142,6 +182,7 @@ class _DugoutScreenState extends State<DugoutScreen> {
                       _selectedFilter = 'All';
                       _sortBy = 'High to Low';
                     });
+                    _load();
                   },
                   child: const Text('Reset',
                       style: TextStyle(
@@ -197,7 +238,10 @@ class _DugoutScreenState extends State<DugoutScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _load();
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -238,7 +282,7 @@ class _DugoutScreenState extends State<DugoutScreen> {
                 ),
                 child: TextField(
                   controller: _searchController,
-                  onChanged: (v) => setState(() => _searchQuery = v),
+                  onChanged: _onSearchChanged,
                   style: const TextStyle(color: Colors.white, fontSize: 14),
                   decoration: InputDecoration(
                     hintText: 'Search player, team or coach',
@@ -249,6 +293,7 @@ class _DugoutScreenState extends State<DugoutScreen> {
                       onTap: () {
                         _searchController.clear();
                         setState(() => _searchQuery = '');
+                        _load();
                       },
                       child: const Icon(Icons.close, color: Colors.white38, size: 18),
                     )
@@ -274,7 +319,10 @@ class _DugoutScreenState extends State<DugoutScreen> {
                   final f = _filters[index];
                   final isActive = _selectedFilter == f;
                   return GestureDetector(
-                    onTap: () => setState(() => _selectedFilter = f),
+                    onTap: () {
+                      setState(() => _selectedFilter = f);
+                      _load();
+                    },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
@@ -349,6 +397,38 @@ class _DugoutScreenState extends State<DugoutScreen> {
                   ? const Center(
                       child:
                           CircularProgressIndicator(color: AppColors.primary))
+                  : _error != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.wifi_off_rounded,
+                                color: Colors.white38, size: 40),
+                            const SizedBox(height: 12),
+                            Text(_error!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    color: Colors.white54, fontSize: 13)),
+                            const SizedBox(height: 14),
+                            OutlinedButton(
+                              onPressed: _load,
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(
+                                    color: AppColors.primary),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadius.circular(12)),
+                              ),
+                              child: const Text('Retry',
+                                  style: TextStyle(
+                                      color: AppColors.primary)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
                   : _filtered.isEmpty
                   ? Center(
                 child: Column(
@@ -370,6 +450,7 @@ class _DugoutScreenState extends State<DugoutScreen> {
                           _searchQuery = '';
                           _selectedFilter = 'All';
                         });
+                        _load();
                       },
                       child: const Text('Clear search',
                           style: TextStyle(
@@ -561,7 +642,80 @@ class _PlayerProfileScreen extends StatefulWidget {
 }
 
 class _PlayerProfileScreenState extends State<_PlayerProfileScreen> {
-  bool _isFollowing = false;
+  late bool _isFollowing = widget.player['isFollowing'] == true;
+  bool _followBusy = false;
+  bool _openingChat = false;
+
+  Future<void> _toggleFollow() async {
+    if (_followBusy) return;
+    final target = widget.player['id'] as String?;
+    if (target == null) return;
+    final next = !_isFollowing;
+    setState(() {
+      _isFollowing = next; // optimistic
+      _followBusy = true;
+    });
+    try {
+      if (next) {
+        await SportyQoApi.followPlayer(target);
+      } else {
+        await SportyQoApi.unfollowPlayer(target);
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _isFollowing = !next); // revert
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.message),
+        backgroundColor: Colors.redAccent,
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isFollowing = !next);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not update follow. Check your connection.'),
+        backgroundColor: Colors.redAccent,
+      ));
+    } finally {
+      if (mounted) setState(() => _followBusy = false);
+    }
+  }
+
+  Future<void> _openChat() async {
+    if (_openingChat) return;
+    final target = widget.player['id'] as String?;
+    if (target == null) return;
+    setState(() => _openingChat = true);
+    try {
+      final threadId = await SportyQoApi.directThread(target);
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatThreadScreen(
+            threadId: threadId,
+            title: widget.player['name'] as String? ?? 'Chat',
+            icon: widget.player['emoji'] as String? ?? '💬',
+          ),
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.code == 'FORBIDDEN'
+            ? 'You can only message players who share a league with you.'
+            : e.message),
+        backgroundColor: Colors.redAccent,
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not open the chat. Check your connection.'),
+        backgroundColor: Colors.redAccent,
+      ));
+    } finally {
+      if (mounted) setState(() => _openingChat = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -714,7 +868,7 @@ class _PlayerProfileScreenState extends State<_PlayerProfileScreen> {
                 child: Row(children: [
                   Expanded(
                     child: GestureDetector(
-                      onTap: () => setState(() => _isFollowing = !_isFollowing),
+                      onTap: _toggleFollow,
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         decoration: BoxDecoration(
@@ -735,15 +889,25 @@ class _PlayerProfileScreenState extends State<_PlayerProfileScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: Colors.white10,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white24),
+                  GestureDetector(
+                    onTap: _openChat,
+                    child: Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: _openingChat
+                          ? const Padding(
+                              padding: EdgeInsets.all(14),
+                              child: CircularProgressIndicator(
+                                  color: Colors.white, strokeWidth: 2),
+                            )
+                          : const Icon(Icons.message_outlined,
+                              color: Colors.white, size: 22),
                     ),
-                    child: const Icon(Icons.message_outlined, color: Colors.white, size: 22),
                   ),
                 ]),
               ),

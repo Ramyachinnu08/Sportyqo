@@ -60,6 +60,14 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _socialNotAvailable() {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content:
+          Text('Social login is not available yet. Please use email or phone.'),
+      backgroundColor: Color(0xFF7B2FFF),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -369,43 +377,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   _SocialBtn(
                     icon: Icons.g_mobiledata,
                     color: const Color(0xFFDB4437),
-                    onTap: () {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) =>
-                            const HomeScreen()),
-                            (route) => false,
-                      );
-                    },
+                    onTap: () => _socialNotAvailable(),
                   ),
                   const SizedBox(width: 16),
                   _SocialBtn(
                     icon: Icons.apple,
                     color: Colors.white,
-                    onTap: () {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) =>
-                            const HomeScreen()),
-                            (route) => false,
-                      );
-                    },
+                    onTap: () => _socialNotAvailable(),
                   ),
                   const SizedBox(width: 16),
                   _SocialBtn(
                     icon: Icons.facebook,
                     color: const Color(0xFF1877F2),
-                    onTap: () {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) =>
-                            const HomeScreen()),
-                            (route) => false,
-                      );
-                    },
+                    onTap: () => _socialNotAvailable(),
                   ),
                 ],
               ),

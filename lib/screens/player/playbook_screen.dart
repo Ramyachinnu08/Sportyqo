@@ -91,6 +91,7 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
               .map((t) => '$t')
               .toList();
           (_byKind[kind] ?? _byKind['NOTE']!).add({
+            'kind': kind,
             'title': raw['title'] ?? '',
             'subtitle': (raw['description'] as String?)?.isNotEmpty == true
                 ? raw['description'] as String
@@ -121,6 +122,15 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
     }
   }
 
+  void _comingSoon(BuildContext context) {
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text(
+          'Media uploads are coming soon — your coach can already share drills, strategies and notes with you.'),
+      backgroundColor: AppColors.primary,
+    ));
+  }
+
   void _showUploadDialog(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -141,21 +151,21 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
                       icon: Icons.camera_alt,
                       label: 'Camera',
                       color: AppColors.primary,
-                      onTap: () => Navigator.pop(context))),
+                      onTap: () => _comingSoon(context))),
               const SizedBox(width: 12),
               Expanded(
                   child: _UploadOption(
                       icon: Icons.photo_library,
                       label: 'Gallery',
                       color: AppColors.primary,
-                      onTap: () => Navigator.pop(context))),
+                      onTap: () => _comingSoon(context))),
               const SizedBox(width: 12),
               Expanded(
                   child: _UploadOption(
                       icon: Icons.videocam,
                       label: 'Video',
                       color: AppColors.primary,
-                      onTap: () => Navigator.pop(context))),
+                      onTap: () => _comingSoon(context))),
             ]),
             const SizedBox(height: 8),
             TextButton(
@@ -243,10 +253,13 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
                                 const Icon(Icons.location_on_outlined,
                                     color: Colors.white38, size: 12),
                                 const SizedBox(width: 4),
-                                Text(_meLocation!,
-                                    style: const TextStyle(
-                                        color: Colors.white38,
-                                        fontSize: 11)),
+                                Flexible(
+                                  child: Text(_meLocation!,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          color: Colors.white38,
+                                          fontSize: 11)),
+                                ),
                               ]),
                             ],
                           ],
@@ -358,11 +371,15 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
                   itemCount: _currentContent.length,
                   itemBuilder: (context, i) {
                     final item = _currentContent[i];
+                    final isVideo =
+                        (item['kind'] as String? ?? '') == 'VIDEO';
                     return GestureDetector(
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => _VideoPlayerScreen(item: item),
+                          builder: (_) => isVideo
+                              ? _VideoPlayerScreen(item: item)
+                              : _ContentDetailScreen(item: item),
                         ),
                       ),
                       child: _ContentCard(item: item),
@@ -397,17 +414,25 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
                         child: const Icon(Icons.add, color: Colors.white, size: 22),
                       ),
                       const SizedBox(width: 14),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text('Add New',
-                              style: TextStyle(
-                                  color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                          Text('Add match videos, highlights and performances',
-                              style: TextStyle(color: Colors.white38, fontSize: 11)),
-                        ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text('Add New',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14)),
+                            Text(
+                                'Add match videos, highlights and performances',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: Colors.white38, fontSize: 11)),
+                          ],
+                        ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 8),
                       const Icon(Icons.chevron_right, color: Colors.white38),
                     ]),
                   ),
@@ -506,8 +531,9 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
-                              widget.item['duration'] as String,
-                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                              _durationLabel,
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 12),
                             ),
                           ),
                         ]),
@@ -527,8 +553,9 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
                               ),
                               const Spacer(),
                               Text(
-                                widget.item['duration'] as String,
-                                style: const TextStyle(color: Colors.white54, fontSize: 11),
+                                _durationLabel,
+                                style: const TextStyle(
+                                    color: Colors.white54, fontSize: 11),
                               ),
                             ]),
                           ),
@@ -556,12 +583,19 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
                   ),
                   const SizedBox(height: 6),
                   Row(children: [
-                    Text(widget.item['subtitle'] as String,
-                        style: const TextStyle(
-                            color: AppColors.primary, fontSize: 14, fontWeight: FontWeight.w600)),
+                    Flexible(
+                      child: Text(widget.item['subtitle'] as String? ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600)),
+                    ),
                     const Text(' • ', style: TextStyle(color: Colors.white38)),
-                    Text(widget.item['date'] as String,
-                        style: const TextStyle(color: Colors.white38, fontSize: 13)),
+                    Text(widget.item['date'] as String? ?? '',
+                        style: const TextStyle(
+                            color: Colors.white38, fontSize: 13)),
                   ]),
                   const SizedBox(height: 16),
                   const Divider(color: Colors.white10),
@@ -630,13 +664,156 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
     }
   }
 
+  /// Total seconds parsed from a "m:ss" duration string; 0 when missing or
+  /// malformed. This used to crash with a red error screen on items without
+  /// a duration (drills, strategies, notes).
+  int get _totalSeconds {
+    final raw = widget.item['duration'] as String? ?? '';
+    final parts = raw.split(':');
+    if (parts.length != 2) return 0;
+    final m = int.tryParse(parts[0]);
+    final sec = int.tryParse(parts[1]);
+    if (m == null || sec == null) return 0;
+    return m * 60 + sec;
+  }
+
+  String get _durationLabel {
+    final raw = (widget.item['duration'] as String? ?? '').trim();
+    return raw.isEmpty ? '--:--' : raw;
+  }
+
   String _formatTime(double progress) {
-    final parts = (widget.item['duration'] as String).split(':');
-    final totalSeconds = int.parse(parts[0]) * 60 + int.parse(parts[1]);
-    final currentSeconds = (totalSeconds * progress).round();
+    final currentSeconds = (_totalSeconds * progress).round();
     final m = currentSeconds ~/ 60;
     final s = currentSeconds % 60;
     return '$m:${s.toString().padLeft(2, '0')}';
+  }
+}
+
+// ── Content Detail Screen (drills / strategies / notes) ──────────────
+// Non-video playbook items used to open the fake video player and crash
+// with a red error screen; they now get a proper read view.
+
+class _ContentDetailScreen extends StatelessWidget {
+  final Map<String, dynamic> item;
+  const _ContentDetailScreen({required this.item});
+
+  String get _kindLabel {
+    switch (item['kind'] as String? ?? '') {
+      case 'DRILL':
+        return 'Drill';
+      case 'STRATEGY':
+        return 'Strategy';
+      case 'VIDEO':
+        return 'Video';
+      default:
+        return 'Note';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = item['title'] as String? ?? '';
+    final description = item['subtitle'] as String? ?? '';
+    final date = item['date'] as String? ?? '';
+    final emoji = item['emoji'] as String? ?? '📝';
+    final color = item['color'] as Color? ?? const Color(0xFF2A2A1A);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Row(children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Icon(Icons.arrow_back_ios,
+                      color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 16),
+                Text(_kindLabel,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800)),
+              ]),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      height: 160,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Center(
+                          child: Text(emoji,
+                              style: const TextStyle(fontSize: 64))),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(title,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                              color: AppColors.primary.withOpacity(0.4)),
+                        ),
+                        child: Text(_kindLabel,
+                            style: const TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700)),
+                      ),
+                      if (date.isNotEmpty) ...[
+                        const SizedBox(width: 10),
+                        const Icon(Icons.calendar_today_outlined,
+                            color: Colors.white38, size: 12),
+                        const SizedBox(width: 4),
+                        Text(date,
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 12)),
+                      ],
+                    ]),
+                    const SizedBox(height: 18),
+                    const Divider(color: Colors.white10),
+                    const SizedBox(height: 14),
+                    Text(
+                      description.isEmpty
+                          ? 'No description was added for this item.'
+                          : description,
+                      style: TextStyle(
+                          color: description.isEmpty
+                              ? Colors.white38
+                              : Colors.white70,
+                          fontSize: 14,
+                          height: 1.6),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -689,26 +866,36 @@ class _ContentCard extends StatelessWidget {
         border: Border.all(color: Colors.white10),
       ),
       child: Stack(children: [
-        Positioned(
-          top: 10,
-          left: 10,
-          child: Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-            child: const Icon(Icons.play_arrow, color: Colors.white, size: 18),
+        if ((item['kind'] as String? ?? '') == 'VIDEO')
+          Positioned(
+            top: 10,
+            left: 10,
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                  color: Colors.black54, shape: BoxShape.circle),
+              child: const Icon(Icons.play_arrow,
+                  color: Colors.white, size: 18),
+            ),
           ),
-        ),
-        Positioned(
-          top: 10,
-          right: 10,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
-            child: Text(item['duration'] as String,
-                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+        if ((item['duration'] as String? ?? '').isNotEmpty)
+          Positioned(
+            top: 10,
+            right: 10,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(6)),
+              child: Text(item['duration'] as String,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600)),
+            ),
           ),
-        ),
         Center(child: Text(item['emoji'] as String, style: const TextStyle(fontSize: 48))),
         Positioned(
           bottom: 0,

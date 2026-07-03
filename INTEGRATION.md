@@ -28,7 +28,10 @@ flutter pub get   # picks up the new http + shared_preferences deps
 flutter run
 ```
 
-Note for real devices/emulators over plain HTTP in dev: Android 9+ blocks cleartext traffic by default. Either use `10.0.2.2` on the emulator (allowed), or add `android:usesCleartextTraffic="true"` to the `<application>` tag in `android/app/src/main/AndroidManifest.xml` for debug builds.
+Android networking is already configured in `android/app/src/main/AndroidManifest.xml`:
+
+- `<uses-permission android:name="android.permission.INTERNET"/>` — required for **release** builds (debug builds inherit it from the debug manifest, release builds do not; without it a release APK has no network at all).
+- `android:usesCleartextTraffic="true"` — Android 9+ blocks plain-`http://` traffic by default, which silently broke every call to `http://10.0.2.2:8080` in dev. Keep this for development; for production point the app at an `https://` URL and you can remove it.
 
 ## 3. Demo accounts (from backend seed)
 
