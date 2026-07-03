@@ -101,6 +101,17 @@ class _CoachHomeTabState extends State<_CoachHomeTab> {
   void initState() {
     super.initState();
     _loadDashboard();
+    _recoverLostPhoto();
+  }
+
+  Future<void> _recoverLostPhoto() async {
+    final url = await recoverLostAvatar();
+    if (url == null || !mounted) return;
+    setState(() => _coachAvatarUrl = url);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Your profile photo was recovered and saved.'),
+      backgroundColor: Color(0xFF00C853),
+    ));
   }
 
   Future<void> _loadDashboard() async {

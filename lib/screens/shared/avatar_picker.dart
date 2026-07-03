@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -78,6 +80,30 @@ Future<String?> pickAndUploadAvatar(
       content: Text('Upload failed. Please try again.'),
       backgroundColor: Colors.redAccent,
     ));
+    return null;
+  }
+}
+
+
+/// Recovers a photo picked just before Android killed the app.
+///
+/// On low-RAM devices (e.g. 1 GB Android Go phones) the OS routinely kills
+/// the backgrounded Flutter process while the external camera/gallery
+/// activity is in the foreground. The picked image is not lost — Android
+/// caches it — but the app restarts from scratch. Calling this on startup
+/// retrieves that image via image_picker's retrieveLostData() and finishes
+/// the avatar upload, so the feature works even after a process death.
+///
+/// Returns the new avatar URL when a photo was recovered and uploaded.
+Future<String?> recoverLostAvatar() async {
+  if (kIsWeb || !Platform.isAndroid) return null;
+  if (!ApiClient.instance.isLoggedIn) return null;
+  try {
+    final LostDataResponse resp = await ImagePicker().retrieveLostData();
+    if (resp.isEmpty || resp.file == null) return null;
+    return await SportyQoApi.uploadAvatar(resp.file!.path);
+  } catch (_) {
+    // Nothing to recover (or unsupported platform embedding) — not an error.
     return null;
   }
 }

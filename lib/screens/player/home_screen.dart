@@ -115,6 +115,19 @@ class _HomeTabState extends State<_HomeTab> {
   void initState() {
     super.initState();
     _loadHome();
+    _recoverLostPhoto();
+  }
+
+  /// If Android killed the app while the camera/gallery was open, the picked
+  /// photo is retrieved here on restart and the upload is completed.
+  Future<void> _recoverLostPhoto() async {
+    final url = await recoverLostAvatar();
+    if (url == null || !mounted) return;
+    setState(() => _avatarUrl = url);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Your profile photo was recovered and saved.'),
+      backgroundColor: AppColors.primary,
+    ));
   }
 
   Future<void> _loadHome() async {

@@ -155,6 +155,7 @@ class _CompleteCoachProfileScreenState
                                   File(_photoPath!),
                                   width: 90,
                                   height: 90,
+                                  cacheWidth: 220, // decode small on low-RAM devices
                                   fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) => const Icon(
                                       Icons.person,
