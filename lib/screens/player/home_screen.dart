@@ -721,7 +721,6 @@ class _HomeTabState extends State<_HomeTab> {
                     Padding(
                       padding: const EdgeInsets.all(16),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Row(children: [
                             const Icon(Icons.calendar_today_outlined,
@@ -731,6 +730,7 @@ class _HomeTabState extends State<_HomeTab> {
                                 style: const TextStyle(
                                     color: Colors.white70, fontSize: 12)),
                           ]),
+                          const SizedBox(width: 14),
                           Row(children: [
                             const Icon(Icons.access_time,
                                 color: Colors.white54, size: 14),
@@ -739,19 +739,29 @@ class _HomeTabState extends State<_HomeTab> {
                                 style: const TextStyle(
                                     color: Colors.white70, fontSize: 12)),
                           ]),
-                          Row(children: [
-                            const Icon(Icons.location_on_outlined,
-                                color: Colors.white54, size: 14),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                  _upcomingMatch?['venue'] as String? ??
-                                      'Venue TBD',
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      color: Colors.white70, fontSize: 12)),
+                          // The venue group must be Expanded: an inner Row
+                          // gets unbounded width from the outer Row, so a
+                          // bare Flexible inside it crashes with
+                          // "RenderBox was not laid out: RenderFlex".
+                          Expanded(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                const Icon(Icons.location_on_outlined,
+                                    color: Colors.white54, size: 14),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                      _upcomingMatch?['venue'] as String? ??
+                                          'Venue TBD',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12)),
+                                ),
+                              ],
                             ),
-                          ]),
+                          ),
                         ],
                       ),
                     ),
@@ -1417,7 +1427,6 @@ class _AllMatchesScreenState extends State<_AllMatchesScreen> {
                       const Divider(color: Colors.white10, height: 1),
                       const SizedBox(height: 10),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Row(children: [
                             const Icon(Icons.calendar_today_outlined,
@@ -1427,6 +1436,7 @@ class _AllMatchesScreenState extends State<_AllMatchesScreen> {
                                 style: const TextStyle(
                                     color: Colors.white54, fontSize: 11)),
                           ]),
+                          const SizedBox(width: 12),
                           Row(children: [
                             const Icon(Icons.access_time,
                                 color: Colors.white38, size: 12),
@@ -1435,14 +1445,23 @@ class _AllMatchesScreenState extends State<_AllMatchesScreen> {
                                 style: const TextStyle(
                                     color: Colors.white54, fontSize: 11)),
                           ]),
-                          Row(children: [
-                            const Icon(Icons.location_on_outlined,
-                                color: Colors.white38, size: 12),
-                            const SizedBox(width: 4),
-                            Text(m['venue'] as String,
-                                style: const TextStyle(
-                                    color: Colors.white54, fontSize: 11)),
-                          ]),
+                          Expanded(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                const Icon(Icons.location_on_outlined,
+                                    color: Colors.white38, size: 12),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(m['venue'] as String,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 11)),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ]),
