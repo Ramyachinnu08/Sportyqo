@@ -60,6 +60,13 @@ class _CoachPerformanceScreenState
   final TextEditingController _addPlayerController =
   TextEditingController();
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _addPlayerController.dispose();
+    super.dispose();
+  }
+
   List<Map<String, dynamic>> get _filtered {
     var list = _tabIndex == 0
         ? _players

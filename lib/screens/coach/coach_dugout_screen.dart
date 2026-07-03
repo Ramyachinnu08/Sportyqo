@@ -28,6 +28,12 @@ class _CoachDugoutScreenState extends State<CoachDugoutScreen> {
     _loadUpdates();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadPlayers() async {
     try {
       final data = await SportyQoApi.searchPlayers();
@@ -859,6 +865,13 @@ class _MessageScreen extends StatefulWidget {
 class _MessageScreenState extends State<_MessageScreen> {
   final TextEditingController _msgController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _msgController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   List<Map<String, dynamic>> _messages = [];
   String? _threadId;

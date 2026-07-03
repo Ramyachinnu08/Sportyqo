@@ -70,3 +70,12 @@ lib/
   the fake Dark Mode setting. The sign-up Location field, gender, notification
   setting and the Dugout share button are now actually wired to the backend
   instead of being placeholders.
+
+## Enabling CI
+
+The GitHub Actions workflow lives at `ci/github-actions-ci.yml`. Move it to enable analyze/test/build on every push:
+
+```bash
+mkdir -p .github/workflows && git mv ci/github-actions-ci.yml .github/workflows/ci.yml
+git commit -m "Enable CI" && git push
+```

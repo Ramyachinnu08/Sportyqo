@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/sportyqo_api.dart';
+import '../shared/avatar_picker.dart';
 import 'coach_dugout_screen.dart';
 import 'coach_playbook_screen.dart';
 import 'coach_performance_screen.dart';
@@ -89,6 +90,7 @@ class _CoachHomeTab extends StatefulWidget {
 class _CoachHomeTabState extends State<_CoachHomeTab> {
   // Live data from GET /coach/dashboard (mock text remains as fallback).
   String? _coachName;
+  String? _coachAvatarUrl;
   String? _coachTitle;
   String? _academy;
   bool _isVerified = true;
@@ -109,6 +111,7 @@ class _CoachHomeTabState extends State<_CoachHomeTab> {
       final counts = data['counts'] as Map<String, dynamic>?;
       setState(() {
         _coachName = coach?['fullName'] as String?;
+        _coachAvatarUrl = coach?['avatarUrl'] as String?;
         _coachTitle = coach?['title'] as String?;
         _academy = coach?['academy'] as String?;
         _isVerified = (coach?['isVerified'] as bool?) ?? false;
@@ -647,17 +650,11 @@ class _CoachHomeTabState extends State<_CoachHomeTab> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: const Color(0xFF00C853), width: 2),
-                color: const Color(0xFF1A1A1A),
-              ),
-              child: const Icon(Icons.person,
-                  size: 36, color: Colors.white38),
+            AvatarCircle(
+              avatarUrl: _coachAvatarUrl,
+              name: _coachName ?? 'Coach',
+              size: 70,
+              borderColor: const Color(0xFF00C853),
             ),
             const SizedBox(height: 12),
             Text(_coachName ?? 'Coach',
