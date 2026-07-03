@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import 'select_sport_screen.dart';
 import '../../services/auth_service.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 
 class CreateProfileScreen extends StatefulWidget {
   final bool isPlayer;
@@ -16,7 +18,28 @@ class CreateProfileScreen extends StatefulWidget {
 class _CreateProfileScreenState
     extends State<CreateProfileScreen> {
   String _selectedGender = 'Male';
-  bool _hasPhoto = false;
+  DateTime? _dob;
+  String? _photoPath; // picked locally; uploaded right after registration
+
+  Future<void> _pickPhoto(ImageSource source) async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (picked != null && mounted) {
+        setState(() => _photoPath = picked.path);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not pick an image on this device.'),
+        backgroundColor: Colors.redAccent,
+      ));
+    }
+  }
   final TextEditingController _locationCtrl = TextEditingController(
       text: RegistrationDraft.instance.location ?? '');
 
@@ -66,14 +89,7 @@ class _CreateProfileScreenState
             GestureDetector(
               onTap: () {
                 Navigator.pop(context);
-                setState(() => _hasPhoto = true);
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(const SnackBar(
-                  content:
-                  Text('Camera opened! 📷'),
-                  backgroundColor:
-                  AppColors.primary,
-                ));
+                _pickPhoto(ImageSource.camera);
               },
               child: Container(
                 width: double.infinity,
@@ -136,14 +152,7 @@ class _CreateProfileScreenState
             GestureDetector(
               onTap: () {
                 Navigator.pop(context);
-                setState(() => _hasPhoto = true);
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(const SnackBar(
-                  content:
-                  Text('Gallery opened! 🖼️'),
-                  backgroundColor:
-                  AppColors.primary,
-                ));
+                _pickPhoto(ImageSource.gallery);
               },
               child: Container(
                 width: double.infinity,
@@ -279,22 +288,24 @@ class _CreateProfileScreenState
                           border: Border.all(
                               color: AppColors.primary,
                               width: 3),
-                          color: _hasPhoto
-                              ? AppColors.primary
-                              .withOpacity(0.3)
-                              : AppColors.darkCard,
+                          color: AppColors.darkCard,
                         ),
-                        child: _hasPhoto
-                            ? const Icon(
-                            Icons.person,
-                            size: 50,
-                            color: AppColors
-                                .primary)
-                            : const Icon(
-                            Icons.person,
-                            size: 50,
-                            color: AppColors
-                                .textGrey),
+                        child: _photoPath == null
+                            ? const Icon(Icons.person,
+                                size: 50,
+                                color: AppColors.textGrey)
+                            : ClipOval(
+                                child: Image.file(
+                                  File(_photoPath!),
+                                  width: 100,
+                                  height: 100,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      const Icon(Icons.person,
+                                          size: 50,
+                                          color: AppColors.primary),
+                                ),
+                              ),
                       ),
                       Positioned(
                         bottom: 0,
@@ -328,14 +339,14 @@ class _CreateProfileScreenState
                 ),
               ),
 
-              if (_hasPhoto) ...[
+              if (_photoPath != null) ...[
                 const SizedBox(height: 8),
                 const Center(
                   child: Text(
-                      '✅ Photo selected!',
+                      'Photo selected — it will be uploaded after sign-up',
                       style: TextStyle(
                           color: Color(0xFF00C853),
-                          fontSize: 13,
+                          fontSize: 12,
                           fontWeight:
                           FontWeight.w600)),
                 ),
@@ -363,34 +374,47 @@ class _CreateProfileScreenState
                           ? AppColors.darkBorder
                           : Colors.grey[300]!),
                 ),
-                child: ListTile(
-                  leading: const Icon(
-                      Icons.calendar_today_outlined,
-                      color: AppColors.textGrey,
-                      size: 20),
-                  title: Text('15 / 08 / 2005',
-                      style: TextStyle(
-                          color: isDark
-                              ? AppColors.textWhite
-                              : AppColors.textDark)),
-                  onTap: () async {
-                    await showDatePicker(
-                      context: context,
-                      initialDate: DateTime(2005, 8, 15),
-                      firstDate: DateTime(1950),
-                      lastDate: DateTime.now(),
-                      builder: (context, child) {
-                        return Theme(
-                          data: Theme.of(context).copyWith(
-                            colorScheme: const ColorScheme.dark(
-                              primary: AppColors.primary,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: ListTile(
+                    leading: const Icon(
+                        Icons.calendar_today_outlined,
+                        color: AppColors.textGrey,
+                        size: 20),
+                    title: Text(
+                        _dob == null
+                            ? 'Select your date of birth'
+                            : '${_dob!.day.toString().padLeft(2, '0')} / ${_dob!.month.toString().padLeft(2, '0')} / ${_dob!.year}',
+                        style: TextStyle(
+                            color: _dob == null
+                                ? AppColors.textGrey
+                                : (isDark
+                                    ? AppColors.textWhite
+                                    : AppColors.textDark))),
+                    trailing: const Icon(Icons.keyboard_arrow_down,
+                        color: AppColors.textGrey),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _dob ?? DateTime(2005, 1, 1),
+                        firstDate: DateTime(1950),
+                        lastDate: DateTime.now(),
+                        builder: (context, child) {
+                          return Theme(
+                            data: Theme.of(context).copyWith(
+                              colorScheme: const ColorScheme.dark(
+                                primary: AppColors.primary,
+                              ),
                             ),
-                          ),
-                          child: child!,
-                        );
-                      },
-                    );
-                  },
+                            child: child!,
+                          );
+                        },
+                      );
+                      if (picked != null) {
+                        setState(() => _dob = picked);
+                      }
+                    },
+                  ),
                 ),
               ),
 
@@ -483,6 +507,10 @@ class _CreateProfileScreenState
                       'Female': 'FEMALE',
                       'Other': 'OTHER',
                     }[_selectedGender];
+                    draft.dob = _dob == null
+                        ? null
+                        : '${_dob!.year}-${_dob!.month.toString().padLeft(2, '0')}-${_dob!.day.toString().padLeft(2, '0')}';
+                    draft.avatarPath = _photoPath;
                     Navigator.push(
                       context,
                       MaterialPageRoute(

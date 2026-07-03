@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/sportyqo_api.dart';
 import '../../services/api_client.dart';
+import '../shared/avatar_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'dugout_screen.dart';
 import 'playbook_screen.dart';
 import 'performance_screen.dart';
@@ -98,6 +100,7 @@ class _HomeTabState extends State<_HomeTab> {
   // Live data from GET /players/:id/home.
   String? _fullName;
   String? _firstName;
+  String? _avatarUrl;
   String? _liveLeagueId;
   Map<String, dynamic>? _upcomingMatch;
   String? _liveSportName;
@@ -131,6 +134,7 @@ class _HomeTabState extends State<_HomeTab> {
         _upcomingMatch = data['upcomingMatch'] as Map<String, dynamic>?;
         _liveSportName = sport?['name'] as String?;
         _fullName = player?['fullName'] as String?;
+        _avatarUrl = player?['avatarUrl'] as String?;
         _firstName =
             (player?['fullName'] as String?)?.split(' ').first;
         _livePlayerCode = player?['playerId'] as String?;
@@ -203,13 +207,6 @@ class _HomeTabState extends State<_HomeTab> {
     if (score >= 500) return 'Blue Card';
     if (score >= 250) return 'Silver Card';
     return 'Bronze Card';
-  }
-
-  static String _initials(String name) {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty || parts.first.isEmpty) return '?';
-    if (parts.length == 1) return parts.first[0].toUpperCase();
-    return (parts.first[0] + parts.last[0]).toUpperCase();
   }
 
   String _getSportRole(String sport) {
@@ -374,33 +371,27 @@ class _HomeTabState extends State<_HomeTab> {
 
                   // Profile Picture (initials — no hardcoded stock photo)
                   GestureDetector(
-                    onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => _ProfileImageScreen(
-                                  name: _fullName ?? 'Player',
-                                  subtitle: [
-                                    if (_activeLeague != null) _activeLeague!,
-                                    if (_activeTeam != null) _activeTeam!,
-                                  ].join(' • '),
-                                ))),
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.primary, width: 2),
-                        color: const Color(0xFF1A1A3A),
-                      ),
-                      child: Center(
-                        child: Text(
-                          _initials(_fullName ?? ''),
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800),
-                        ),
-                      ),
+                    onTap: () async {
+                      await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => _ProfileImageScreen(
+                                    name: _fullName ?? 'Player',
+                                    avatarUrl: _avatarUrl,
+                                    subtitle: [
+                                      if (_activeLeague != null)
+                                        _activeLeague!,
+                                      if (_activeTeam != null) _activeTeam!,
+                                    ].join(' • '),
+                                  )));
+                      _loadHome(); // pick up a changed photo
+                    },
+                    child: AvatarCircle(
+                      avatarUrl: _avatarUrl,
+                      name: _fullName ?? '',
+                      size: 44,
+                      borderColor: AppColors.primary,
+                      fontSize: 15,
                     ),
                   ),
                 ]),
@@ -1850,16 +1841,24 @@ class _StandingRow extends StatelessWidget {
 
 // ── Profile Image Screen ──────────────────────────────────────────────
 
-class _ProfileImageScreen extends StatelessWidget {
+class _ProfileImageScreen extends StatefulWidget {
   final String name;
   final String subtitle;
-  const _ProfileImageScreen({required this.name, this.subtitle = ''});
+  final String? avatarUrl;
+  const _ProfileImageScreen(
+      {required this.name, this.subtitle = '', this.avatarUrl});
 
-  String get _initials {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty || parts.first.isEmpty) return '?';
-    if (parts.length == 1) return parts.first[0].toUpperCase();
-    return (parts.first[0] + parts.last[0]).toUpperCase();
+  @override
+  State<_ProfileImageScreen> createState() => _ProfileImageScreenState();
+}
+
+class _ProfileImageScreenState extends State<_ProfileImageScreen> {
+  late String? _avatarUrl = widget.avatarUrl;
+
+  Future<void> _change(ImageSource source) async {
+    final url = await pickAndUploadAvatar(context, source,
+        accent: AppColors.primary);
+    if (url != null && mounted) setState(() => _avatarUrl = url);
   }
 
   @override
@@ -1887,21 +1886,13 @@ class _ProfileImageScreen extends StatelessWidget {
             ),
             const Spacer(),
             Stack(alignment: Alignment.center, children: [
-              Container(
-                width: 160,
-                height: 160,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.primary, width: 3),
-                  color: const Color(0xFF1A1A3A),
-                ),
-                child: Center(
-                  child: Text(_initials,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 48,
-                          fontWeight: FontWeight.w800)),
-                ),
+              AvatarCircle(
+                avatarUrl: _avatarUrl,
+                name: widget.name,
+                size: 160,
+                borderColor: AppColors.primary,
+                borderWidth: 3,
+                fontSize: 48,
               ),
               Positioned(
                 bottom: 8,
@@ -1919,13 +1910,13 @@ class _ProfileImageScreen extends StatelessWidget {
               ),
             ]),
             const SizedBox(height: 24),
-            Text(name,
+            Text(widget.name,
                 style: const TextStyle(
                     color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
-            if (subtitle.isNotEmpty)
+            if (widget.subtitle.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(subtitle,
+                child: Text(widget.subtitle,
                     textAlign: TextAlign.center,
                     style:
                         const TextStyle(color: Colors.white54, fontSize: 13)),
@@ -1937,11 +1928,7 @@ class _ProfileImageScreen extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                'Photo upload is coming soon in a future update.'),
-                            backgroundColor: AppColors.primary)),
+                    onPressed: () => _change(ImageSource.camera),
                     icon: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
                     label: const Text('Take Photo',
                         style: TextStyle(
@@ -1959,11 +1946,7 @@ class _ProfileImageScreen extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                'Photo upload is coming soon in a future update.'),
-                            backgroundColor: AppColors.primary)),
+                    onPressed: () => _change(ImageSource.gallery),
                     icon: const Icon(Icons.photo_library, color: Colors.white, size: 20),
                     label: const Text('Choose from Gallery',
                         style: TextStyle(

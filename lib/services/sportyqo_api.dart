@@ -44,6 +44,13 @@ class SportyQoApi {
         as Map<String, dynamic>;
   }
 
+  /// Uploads a new profile photo (player or coach); returns the avatar URL.
+  static Future<String?> uploadAvatar(String filePath) async {
+    final data = await _api.postMultipart('/me/avatar',
+        files: {'avatar': filePath}) as Map<String, dynamic>;
+    return data['avatarUrl'] as String?;
+  }
+
   // ── Academy history (editable "Academy Experience" list) ────────────────
 
   static Future<List<dynamic>> academyHistory() async {

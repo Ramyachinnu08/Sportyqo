@@ -45,6 +45,15 @@ class ApiClient {
 
   bool get isLoggedIn => _accessToken != null;
 
+  /// Resolves media URLs returned by the API. Relative paths (like
+  /// "/uploads/avatars/x.png") are served by the backend itself, so they
+  /// are prefixed with the API base URL; absolute URLs pass through.
+  static String? resolveMediaUrl(String? url) {
+    if (url == null || url.isEmpty) return null;
+    if (url.startsWith('/')) return '$baseUrl$url';
+    return url;
+  }
+
   /// Call once at app start (e.g. in main) to restore a saved session.
   Future<void> restoreSession() async {
     final p = await SharedPreferences.getInstance();

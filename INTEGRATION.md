@@ -69,3 +69,14 @@ The typed client in `lib/services/sportyqo_api.dart` already has methods for the
 - Create League (multipart with logos) — see `POST /leagues` in the backend's `docs/API.md`
 
 Full endpoint reference: `docs/API.md` in the backend repo.
+
+
+## Profile photo uploads
+
+`POST /me/avatar` accepts a multipart image (field `avatar`). In development,
+if MinIO/S3 is not running, the backend saves files to its local `uploads/`
+folder and serves them at `/uploads/...`; the app resolves those relative URLs
+against `API_BASE_URL` automatically. iOS permission strings for camera and
+photo library are already declared in `ios/Runner/Info.plist`; Android needs
+no extra configuration (image_picker uses the system photo picker and camera
+intent).

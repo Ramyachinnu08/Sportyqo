@@ -112,6 +112,7 @@ class _DugoutScreenState extends State<DugoutScreen> {
             'color1': st.c1,
             'color2': st.c2,
             'emoji': (r['sportEmoji'] as String?) ?? st.emoji,
+            'avatarUrl': r['avatarUrl'] as String?,
             'filter': sport ?? 'All',
             'verified': r['verified'] == true,
             'isFollowing': r['isFollowing'] == true,
@@ -548,9 +549,23 @@ class _PlayerCard extends StatelessWidget {
                 colors: [(p['color1'] as Color).withOpacity(0.8), p['color2'] as Color],
               ),
             ),
-            child: Center(
-              child: Text(p['emoji'] as String, style: const TextStyle(fontSize: 52)),
-            ),
+            child: ApiClient.resolveMediaUrl(p['avatarUrl'] as String?) == null
+                ? Center(
+                    child: Text(p['emoji'] as String,
+                        style: const TextStyle(fontSize: 52)),
+                  )
+                : ClipRRect(
+                    borderRadius: const BorderRadius.horizontal(
+                        left: Radius.circular(16)),
+                    child: Image.network(
+                      ApiClient.resolveMediaUrl(p['avatarUrl'] as String?)!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Center(
+                        child: Text(p['emoji'] as String,
+                            style: const TextStyle(fontSize: 52)),
+                      ),
+                    ),
+                  ),
           ),
           Expanded(
             child: Padding(
@@ -733,7 +748,21 @@ class _PlayerProfileScreenState extends State<_PlayerProfileScreen> {
                 ]),
               ),
               const SizedBox(height: 20),
-              Text(p['emoji'] as String, style: const TextStyle(fontSize: 72)),
+              ApiClient.resolveMediaUrl(p['avatarUrl'] as String?) == null
+                  ? Text(p['emoji'] as String,
+                      style: const TextStyle(fontSize: 72))
+                  : ClipOval(
+                      child: Image.network(
+                        ApiClient.resolveMediaUrl(
+                            p['avatarUrl'] as String?)!,
+                        width: 110,
+                        height: 110,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Text(
+                            p['emoji'] as String,
+                            style: const TextStyle(fontSize: 72)),
+                      ),
+                    ),
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,

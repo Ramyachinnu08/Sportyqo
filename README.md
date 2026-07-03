@@ -26,6 +26,22 @@ lib/
 
 ## Recent fixes (2026-07)
 
+- **Profile photos work end-to-end**: camera and gallery now open via `image_picker`
+  and upload to `POST /me/avatar` (player *and* coach). Photos display on the Home
+  top bar, Profile, the photo screen, and Dugout cards/profiles. A photo picked
+  during sign-up is uploaded automatically right after the account is created.
+  The backend stores files in S3/MinIO when available and transparently falls
+  back to local disk (`/uploads`) in development, so it works with plain `npm start`.
+- **Debug assertion fixed**: "ListTile background color or ink splashes may be
+  invisible" — the coach-profile settings tiles and the sign-up date-of-birth
+  tile now paint on a proper Material.
+- **Sign-up date of birth actually saves**: the picker used to discard your
+  selection and always show "15/08/2005"; it now stores and displays your date
+  and persists it to your profile.
+- **Gradle**: migrated the app to Flutter's Built-in Kotlin (removes the KGP
+  deprecation warning; the remaining share_plus notice is plugin-side).
+- After pulling, run `flutter pub get` (new dependency: `image_picker`).
+
 - **Android networking**: added the `INTERNET` permission to the main manifest and enabled
   cleartext traffic — previously every API call failed silently on Android 9+ (empty Home,
   dead search, mock data everywhere) and release builds had no network at all.

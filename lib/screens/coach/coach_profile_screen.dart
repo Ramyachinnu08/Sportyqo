@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import '../shared/avatar_picker.dart';
 import 'package:flutter/services.dart';
 import '../auth/choose_role_screen.dart';
 import '../../services/sportyqo_api.dart';
@@ -40,12 +42,15 @@ class _CoachProfileScreenState
     _loadProfile();
   }
 
+  String? _avatarUrl;
+
   Future<void> _loadProfile() async {
     try {
       final me = await SportyQoApi.me();
       if (!mounted) return;
       setState(() {
         _name = me['fullName'] as String? ?? '';
+        _avatarUrl = me['avatarUrl'] as String?;
         _title = me['title'] as String? ?? 'Coach';
         _academy = me['academy'] as String? ?? '';
         _location = me['location'] as String? ?? '';
@@ -177,22 +182,11 @@ class _CoachProfileScreenState
                             onTap: () =>
                                 _showPhotoOptions(context),
                             child: Stack(children: [
-                              Container(
-                                width: 80,
-                                height: 80,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                      color:
-                                      const Color(0xFF00C853),
-                                      width: 2),
-                                  color:
-                                  const Color(0xFF1A1A1A),
-                                ),
-                                child: const Center(
-                                    child: Text('👤',
-                                        style: TextStyle(
-                                            fontSize: 40))),
+                              AvatarCircle(
+                                avatarUrl: _avatarUrl,
+                                name: _name,
+                                size: 80,
+                                borderColor: const Color(0xFF00C853),
                               ),
                               Positioned(
                                 bottom: 0,
@@ -784,20 +778,11 @@ class _CoachProfileScreenState
               // Avatar
               Center(
                 child: Stack(children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: const Color(0xFF00C853),
-                          width: 2),
-                      color: const Color(0xFF1A1A1A),
-                    ),
-                    child: const Center(
-                        child: Text('👤',
-                            style:
-                            TextStyle(fontSize: 40))),
+                  AvatarCircle(
+                    avatarUrl: _avatarUrl,
+                    name: _name,
+                    size: 80,
+                    borderColor: const Color(0xFF00C853),
                   ),
                   Positioned(
                     bottom: 0,
@@ -1117,13 +1102,14 @@ class _CoachProfileScreenState
                   color: Color(0xFF00C853)),
               title: const Text('Take Photo',
                   style: TextStyle(color: Colors.white)),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Camera opened 📷'),
-                      backgroundColor: Color(0xFF00C853)),
-                );
+                final url = await pickAndUploadAvatar(
+                    context, ImageSource.camera,
+                    accent: const Color(0xFF00C853));
+                if (url != null && mounted) {
+                  setState(() => _avatarUrl = url);
+                }
               },
             ),
             ListTile(
@@ -1132,13 +1118,14 @@ class _CoachProfileScreenState
                   color: Color(0xFF00C853)),
               title: const Text('Choose from Gallery',
                   style: TextStyle(color: Colors.white)),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Gallery opened 🖼️'),
-                      backgroundColor: Color(0xFF00C853)),
-                );
+                final url = await pickAndUploadAvatar(
+                    context, ImageSource.gallery,
+                    accent: const Color(0xFF00C853));
+                if (url != null && mounted) {
+                  setState(() => _avatarUrl = url);
+                }
               },
             ),
             TextButton(
@@ -1666,15 +1653,18 @@ class _SettingsItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF111111),
+    // ListTile paints its ink on the nearest Material — a DecoratedBox here
+    // hid it and threw a debug assertion. Material carries the color/shape.
+    return Material(
+      color: const Color(0xFF111111),
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
+        side: BorderSide(
             color: isLogout
                 ? Colors.red.withOpacity(0.3)
                 : Colors.white10),
       ),
+      clipBehavior: Clip.antiAlias,
       child: ListTile(
         onTap: onTap,
         leading: Icon(icon,

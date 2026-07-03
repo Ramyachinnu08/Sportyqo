@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>SportyQo uses the camera to take your profile photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>SportyQo needs photo library access so you can choose a profile photo.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>SportyQo may record audio when capturing video.</string>
 </dict>
 </plist>

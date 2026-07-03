@@ -16,6 +16,7 @@ class RegistrationDraft {
   String? dob; // YYYY-MM-DD
   String? gender; // MALE / FEMALE / OTHER
   String? location;
+  String? avatarPath; // local file picked during sign-up
 
   void reset() {
     fullName = '';
@@ -27,6 +28,7 @@ class RegistrationDraft {
     dob = null;
     gender = null;
     location = null;
+    avatarPath = null;
   }
 }
 
@@ -86,11 +88,20 @@ class AuthService {
       if (d.gender != null) 'gender': d.gender,
       if (d.dob != null) 'dob': d.dob,
     };
-    if (fields.isEmpty) return;
-    try {
-      await _api.patch('/me/profile', body: fields);
-    } catch (_) {
-      // Registration already succeeded; profile details can be edited later.
+    if (fields.isNotEmpty) {
+      try {
+        await _api.patch('/me/profile', body: fields);
+      } catch (_) {
+        // Registration already succeeded; details can be edited later.
+      }
+    }
+    if (d.avatarPath != null) {
+      try {
+        await _api.postMultipart('/me/avatar',
+            files: {'avatar': d.avatarPath!});
+      } catch (_) {
+        // Photo can be re-uploaded from the profile screen later.
+      }
     }
   }
 

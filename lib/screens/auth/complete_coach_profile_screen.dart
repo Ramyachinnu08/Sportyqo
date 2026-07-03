@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../theme/app_theme.dart';
+import '../../services/auth_service.dart';
 import '../coach/select_coach_sport_screen.dart';
 
 class CompleteCoachProfileScreen extends StatefulWidget {
@@ -14,6 +17,28 @@ class _CompleteCoachProfileScreenState
     extends State<CompleteCoachProfileScreen> {
   String _experience = '8+ Years';
   String _level = 'A License';
+  String? _photoPath; // picked locally; uploaded right after registration
+
+  Future<void> _pickPhoto(ImageSource source) async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (picked != null && mounted) {
+        setState(() => _photoPath = picked.path);
+        RegistrationDraft.instance.avatarPath = picked.path;
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not pick an image on this device.'),
+        backgroundColor: Colors.redAccent,
+      ));
+    }
+  }
 
   void _showPhotoOptions() {
     showModalBottomSheet(
@@ -42,12 +67,7 @@ class _CompleteCoachProfileScreenState
                   style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Camera opened! 📷'),
-                    backgroundColor: Color(0xFF00C853),
-                  ),
-                );
+                _pickPhoto(ImageSource.camera);
               },
             ),
             ListTile(
@@ -58,12 +78,7 @@ class _CompleteCoachProfileScreenState
                   style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Gallery opened! 🖼️'),
-                    backgroundColor: Color(0xFF00C853),
-                  ),
-                );
+                _pickPhoto(ImageSource.gallery);
               },
             ),
             const SizedBox(height: 8),
@@ -132,8 +147,21 @@ class _CompleteCoachProfileScreenState
                               color: const Color(0xFF00C853), width: 3),
                           color: AppColors.darkCard,
                         ),
-                        child: const Icon(Icons.person,
-                            size: 44, color: AppColors.textGrey),
+                        child: _photoPath == null
+                            ? const Icon(Icons.person,
+                                size: 44, color: AppColors.textGrey)
+                            : ClipOval(
+                                child: Image.file(
+                                  File(_photoPath!),
+                                  width: 90,
+                                  height: 90,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Icon(
+                                      Icons.person,
+                                      size: 44,
+                                      color: AppColors.textGrey),
+                                ),
+                              ),
                       ),
                       Positioned(
                         bottom: 0,

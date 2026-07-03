@@ -6,6 +6,8 @@ import '../../services/sportyqo_api.dart';
 import '../../services/auth_service.dart';
 import '../../services/api_client.dart';
 import '../shared/chat_screens.dart';
+import '../shared/avatar_picker.dart';
+import 'package:image_picker/image_picker.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String? playerId;
@@ -74,15 +76,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Stack(children: [
-                          Container(
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: AppColors.primary, width: 2),
-                              color: const Color(0xFF1A1A3A),
-                            ),
-                            child: const Center(child: Text('👤', style: TextStyle(fontSize: 40))),
+                          AvatarCircle(
+                            avatarUrl: _profile?['avatarUrl'] as String?,
+                            name: _profile?['fullName'] as String? ?? '',
+                            size: 80,
+                            borderColor: AppColors.primary,
                           ),
                           Positioned(
                             bottom: 0,
@@ -740,30 +738,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.camera_alt, color: AppColors.primary),
               title: const Text('Take Photo', style: TextStyle(color: Colors.white)),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                        'Photo upload is coming soon in a future update.'),
-                    backgroundColor: AppColors.primary,
-                  ),
-                );
+                final url = await pickAndUploadAvatar(
+                    context, ImageSource.camera,
+                    accent: AppColors.primary);
+                if (url != null && mounted) _load();
               },
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.photo_library, color: AppColors.primary),
               title: const Text('Choose from Gallery', style: TextStyle(color: Colors.white)),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                        'Photo upload is coming soon in a future update.'),
-                    backgroundColor: AppColors.primary,
-                  ),
-                );
+                final url = await pickAndUploadAvatar(
+                    context, ImageSource.gallery,
+                    accent: AppColors.primary);
+                if (url != null && mounted) _load();
               },
             ),
             const SizedBox(height: 8),
