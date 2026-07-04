@@ -1,6 +1,10 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
-    // Kotlin support is provided by the Flutter Gradle Plugin (Built-in Kotlin).
+    // Explicit Kotlin (see android/settings.gradle.kts for why the version
+    // is pinned there). The Flutter Gradle Plugin must be applied last.
+    id("org.jetbrains.kotlin.android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -19,7 +23,9 @@ android {
         applicationId = "com.example.sportyqo"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // Current plugin versions (image_picker_android 0.8.13+) require
+        // at least API 24; keep whichever is higher.
+        minSdk = maxOf(24, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -31,6 +37,14 @@ android {
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        // Keep Kotlin's JVM target in lockstep with compileOptions above,
+        // otherwise KGP 2.x fails the build on a JVM-target mismatch.
+        jvmTarget = JvmTarget.fromTarget(JavaVersion.VERSION_17.toString())
     }
 }
 
