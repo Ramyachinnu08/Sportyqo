@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/sportyqo_api.dart';
+import 'app_toast.dart';
 import '../../services/api_client.dart';
 
 /// List of the user's Dugout chat threads (team chats + direct messages).
@@ -306,16 +307,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _jumpToBottom();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(e.message),
-        backgroundColor: Colors.redAccent,
-      ));
+      AppToast.error(context, e.message);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Message not sent. Check your connection.'),
-        backgroundColor: Colors.redAccent,
-      ));
+      AppToast.error(context, 'Message not sent. Check your connection.');
     } finally {
       if (mounted) setState(() => _sending = false);
     }

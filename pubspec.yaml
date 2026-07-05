@@ -33,6 +33,7 @@ dependencies:
   share_plus: ^10.1.2
   image_picker: ^1.1.2
   http: ^1.2.2
+  http_parser: ^4.0.2
   shared_preferences: ^2.3.3
   video_player: ^2.9.2
 

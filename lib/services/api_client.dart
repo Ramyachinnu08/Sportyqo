@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' show MediaType;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Thrown for any non-success API response. `code` matches the backend's
@@ -118,6 +119,18 @@ class ApiClient {
           'Authorization': 'Bearer $_accessToken',
       };
 
+  /// A raw "Route not found: GET /players/discover" almost always means the
+  /// running backend is an older build than this app (e.g. the Docker image
+  /// was never rebuilt after a `git pull`). Surface that as an actionable
+  /// message instead of a baffling "Route not Found".
+  static String _friendlyMessage(String code, String message) {
+    if (code == 'NOT_FOUND' && message.startsWith('Route not found')) {
+      return 'This feature is not available on the server yet. '
+          'Please update the SportyQo backend (rebuild the Docker image) and try again.';
+    }
+    return message;
+  }
+
   /// Guards against paths built from null/empty ids (e.g. "/dugout//messages"
   /// or "/players/null/home"). Those used to reach the server and come back as
   /// a baffling "Route not found" — now they fail fast with a message that
@@ -152,6 +165,41 @@ class ApiClient {
     return _send('DELETE', path, body: body, auth: auth);
   }
 
+  /// Maps a file path to its MIME type from the extension. Without this,
+  /// `MultipartFile.fromPath` labels everything `application/octet-stream`,
+  /// which the backend's image/video filters reject ("Only PNG/JPG/WEBP
+  /// allowed") — the root cause of avatar uploads failing from the app.
+  static MediaType? _mediaTypeFor(String filePath) {
+    final dot = filePath.lastIndexOf('.');
+    if (dot < 0) return null;
+    switch (filePath.substring(dot + 1).toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return MediaType('image', 'jpeg');
+      case 'png':
+        return MediaType('image', 'png');
+      case 'webp':
+        return MediaType('image', 'webp');
+      case 'gif':
+        return MediaType('image', 'gif');
+      case 'heic':
+      case 'heif':
+        return MediaType('image', 'heic');
+      case 'mp4':
+        return MediaType('video', 'mp4');
+      case 'mov':
+        return MediaType('video', 'quicktime');
+      case 'webm':
+        return MediaType('video', 'webm');
+      case '3gp':
+        return MediaType('video', '3gpp');
+      case 'avi':
+        return MediaType('video', 'x-msvideo');
+      default:
+        return null;
+    }
+  }
+
   /// Multipart POST (league creation with logos, avatar upload, documents,
   /// playbook media). [fields] are plain form fields; [files] maps field
   /// name -> file path. Pass [onProgress] to receive upload progress in the
@@ -168,7 +216,8 @@ class ApiClient {
     }
     req.fields.addAll(fields);
     for (final e in files.entries) {
-      req.files.add(await http.MultipartFile.fromPath(e.key, e.value));
+      req.files.add(await http.MultipartFile.fromPath(e.key, e.value,
+          contentType: _mediaTypeFor(e.value)));
     }
     http.Response res;
     try {
@@ -187,10 +236,12 @@ class ApiClient {
     }
     if (json['success'] == true) return json['data'];
     final err = (json['error'] as Map<String, dynamic>?) ?? {};
+    final code = (err['code'] as String?) ?? 'INTERNAL';
     throw ApiException(
       res.statusCode,
-      (err['code'] as String?) ?? 'INTERNAL',
-      (err['message'] as String?) ?? 'Something went wrong.',
+      code,
+      _friendlyMessage(
+          code, (err['message'] as String?) ?? 'Something went wrong.'),
       err['details'] as List<dynamic>?,
     );
   }
@@ -234,10 +285,12 @@ class ApiClient {
 
     if (json['success'] == true) return json['data'];
     final err = (json['error'] as Map<String, dynamic>?) ?? {};
+    final code = (err['code'] as String?) ?? 'INTERNAL';
     throw ApiException(
       res.statusCode,
-      (err['code'] as String?) ?? 'INTERNAL',
-      (err['message'] as String?) ?? 'Something went wrong.',
+      code,
+      _friendlyMessage(
+          code, (err['message'] as String?) ?? 'Something went wrong.'),
       err['details'] as List<dynamic>?,
     );
   }

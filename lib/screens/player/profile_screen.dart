@@ -3,6 +3,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../theme/app_theme.dart';
 import '../auth/choose_role_screen.dart';
 import '../../services/sportyqo_api.dart';
+import '../shared/app_toast.dart';
 import '../../services/auth_service.dart';
 import '../../services/api_client.dart';
 import '../shared/chat_screens.dart';
@@ -536,11 +537,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               } on ApiException catch (e) {
                                 setModalState(() => saving = false);
                                 if (!sheetContext.mounted) return;
-                                ScaffoldMessenger.of(sheetContext)
-                                    .showSnackBar(SnackBar(
-                                  content: Text(e.message),
-                                  backgroundColor: Colors.redAccent,
-                                ));
+                                AppToast.error(sheetContext, e.message);
                               }
                             },
                       child: const Icon(Icons.delete_outline,
@@ -571,12 +568,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         : () async {
                             final academy = academyCtrl.text.trim();
                             if (academy.length < 2) {
-                              ScaffoldMessenger.of(sheetContext)
-                                  .showSnackBar(const SnackBar(
-                                content:
-                                    Text('Enter the academy or club name'),
-                                backgroundColor: Colors.redAccent,
-                              ));
+                              AppToast.error(sheetContext,
+                                  'Enter the academy or club name');
                               return;
                             }
                             final start =
@@ -607,11 +600,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             } on ApiException catch (e) {
                               setModalState(() => saving = false);
                               if (!sheetContext.mounted) return;
-                              ScaffoldMessenger.of(sheetContext)
-                                  .showSnackBar(SnackBar(
-                                content: Text(e.message),
-                                backgroundColor: Colors.redAccent,
-                              ));
+                              AppToast.error(sheetContext, e.message);
                             }
                           },
                     style: ElevatedButton.styleFrom(
@@ -704,11 +693,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             } on ApiException catch (e) {
                               setModalState(() => saving = false);
                               if (!sheetContext.mounted) return;
-                              ScaffoldMessenger.of(sheetContext)
-                                  .showSnackBar(SnackBar(
-                                content: Text(e.message),
-                                backgroundColor: Colors.redAccent,
-                              ));
+                              AppToast.error(sheetContext, e.message);
                             }
                           },
                     style: ElevatedButton.styleFrom(
@@ -841,11 +826,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     }).catchError((_) {
                       if (!mounted) return;
                       setState(() => _notificationsOn = !val);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text(
-                            'Could not save the notification setting. Check your connection.'),
-                        backgroundColor: Colors.redAccent,
-                      ));
+                      AppToast.error(context,
+                          'Could not save the notification setting. Check your connection.');
                     });
                   },
                   activeColor: AppColors.primary,

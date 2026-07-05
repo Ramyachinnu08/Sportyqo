@@ -5,17 +5,16 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/sportyqo_api.dart';
 import '../../services/api_client.dart';
+import 'app_toast.dart';
 
 /// Opens the camera or gallery, uploads the chosen photo to POST /me/avatar
 /// and returns the new avatar URL — or null if the user cancelled or the
-/// upload failed (an explanatory snackbar is shown in that case).
+/// upload failed (an explanatory toast is shown in that case).
 Future<String?> pickAndUploadAvatar(
   BuildContext context,
   ImageSource source, {
   Color accent = const Color(0xFF7B2FFF),
 }) async {
-  final messenger = ScaffoldMessenger.of(context);
-
   XFile? picked;
   try {
     picked = await ImagePicker().pickImage(
@@ -26,60 +25,52 @@ Future<String?> pickAndUploadAvatar(
     );
   } on PlatformException catch (e) {
     final denied = e.code.contains('access_denied');
-    messenger.showSnackBar(SnackBar(
-      content: Text(denied
-          ? 'Permission denied. Allow ${source == ImageSource.camera ? 'camera' : 'photos'} access for SportyQo in your device Settings.'
-          : 'Could not open the ${source == ImageSource.camera ? 'camera' : 'gallery'} on this device.'),
-      backgroundColor: Colors.redAccent,
-    ));
+    if (context.mounted) {
+      AppToast.error(
+          context,
+          denied
+              ? 'Permission denied. Allow ${source == ImageSource.camera ? 'camera' : 'photos'} access for SportyQo in your device Settings.'
+              : 'Could not open the ${source == ImageSource.camera ? 'camera' : 'gallery'} on this device.');
+    }
     return null;
   } catch (_) {
-    messenger.showSnackBar(const SnackBar(
-      content: Text('Could not pick an image on this device.'),
-      backgroundColor: Colors.redAccent,
-    ));
+    if (context.mounted) {
+      AppToast.error(context, 'Could not pick an image on this device.');
+    }
     return null;
   }
   if (picked == null) return null; // user cancelled
 
-  messenger.showSnackBar(SnackBar(
-    content: Row(children: const [
-      SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(
-              strokeWidth: 2, color: Colors.white)),
-      SizedBox(width: 12),
-      Text('Uploading photo…'),
-    ]),
-    backgroundColor: accent,
-    duration: const Duration(seconds: 30),
-  ));
+  if (context.mounted) {
+    AppToast.info(context, 'Uploading photo…',
+        duration: const Duration(seconds: 60));
+  }
 
   try {
     final url = await SportyQoApi.uploadAvatar(picked.path);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(SnackBar(
-      content: const Text('Profile photo updated'),
-      backgroundColor: accent,
-      duration: const Duration(seconds: 2),
-    ));
+    if (context.mounted) {
+      AppToast.success(context, 'Profile photo updated');
+    } else {
+      AppToast.dismiss();
+    }
     return url;
   } on ApiException catch (e) {
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(SnackBar(
-      content: Text(e.code == 'NETWORK'
-          ? 'Upload failed — could not reach the server.'
-          : e.message),
-      backgroundColor: Colors.redAccent,
-    ));
+    if (context.mounted) {
+      AppToast.error(
+          context,
+          e.code == 'NETWORK'
+              ? 'Upload failed — could not reach the server.'
+              : e.message);
+    } else {
+      AppToast.dismiss();
+    }
     return null;
   } catch (_) {
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(const SnackBar(
-      content: Text('Upload failed. Please try again.'),
-      backgroundColor: Colors.redAccent,
-    ));
+    if (context.mounted) {
+      AppToast.error(context, 'Upload failed. Please try again.');
+    } else {
+      AppToast.dismiss();
+    }
     return null;
   }
 }

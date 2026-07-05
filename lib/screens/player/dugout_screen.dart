@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../theme/app_theme.dart';
 import '../../services/sportyqo_api.dart';
 import '../../services/api_client.dart';
+import '../shared/app_toast.dart';
 import '../shared/chat_screens.dart';
 
 class DugoutScreen extends StatefulWidget {
@@ -664,17 +665,11 @@ class _PlayerProfileScreenState extends State<_PlayerProfileScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _isFollowing = !next); // revert
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(e.message),
-        backgroundColor: Colors.redAccent,
-      ));
+      AppToast.error(context, e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _isFollowing = !next);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Could not update follow. Check your connection.'),
-        backgroundColor: Colors.redAccent,
-      ));
+      AppToast.error(context, 'Could not update follow. Check your connection.');
     } finally {
       if (mounted) setState(() => _followBusy = false);
     }
@@ -700,18 +695,10 @@ class _PlayerProfileScreenState extends State<_PlayerProfileScreen> {
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(e.code == 'FORBIDDEN'
-            ? 'You can only message players who share a league with you.'
-            : e.message),
-        backgroundColor: Colors.redAccent,
-      ));
+      AppToast.error(context, e.code == 'FORBIDDEN' ? 'You can only message players who share a league with you.' : e.message);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Could not open the chat. Check your connection.'),
-        backgroundColor: Colors.redAccent,
-      ));
+      AppToast.error(context, 'Could not open the chat. Check your connection.');
     } finally {
       if (mounted) setState(() => _openingChat = false);
     }

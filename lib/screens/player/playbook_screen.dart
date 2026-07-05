@@ -4,6 +4,7 @@ import 'package:video_player/video_player.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_client.dart';
 import '../../services/sportyqo_api.dart';
+import '../shared/app_toast.dart';
 
 class PlaybookScreen extends StatefulWidget {
   const PlaybookScreen({super.key});
@@ -158,12 +159,10 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
       await SportyQoApi.deletePlaybookItem(id);
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Deleted'), backgroundColor: Color(0xFF00C853)));
+      AppToast.success(context, 'Deleted');
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(e.message), backgroundColor: Colors.redAccent));
+      AppToast.error(context, e.message);
     }
   }
 
@@ -183,11 +182,8 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
               source: source, maxWidth: 1920, imageQuality: 88);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'Could not open the camera/gallery. Check the app permissions in Settings.'),
-        backgroundColor: Colors.redAccent,
-      ));
+      AppToast.error(context,
+          'Could not open the camera/gallery. Check the app permissions in Settings.');
       return;
     }
     if (file == null || !mounted) return; // user cancelled
@@ -294,12 +290,8 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
                       : () async {
                           final title = titleCtrl.text.trim();
                           if (title.length < 3) {
-                            ScaffoldMessenger.of(dialogContext)
-                                .showSnackBar(const SnackBar(
-                              content:
-                                  Text('Give it a title (3+ characters)'),
-                              backgroundColor: Colors.redAccent,
-                            ));
+                            AppToast.error(dialogContext,
+                                'Give it a title (3+ characters)');
                             return;
                           }
                           setSheetState(() => uploading = true);
@@ -315,32 +307,21 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
                             Navigator.pop(dialogContext);
                             await _load();
                             if (!mounted) return;
-                            ScaffoldMessenger.of(context)
-                                .showSnackBar(SnackBar(
-                              content: Text(video
-                                  ? 'Video uploaded ✅'
-                                  : 'Photo uploaded ✅'),
-                              backgroundColor: const Color(0xFF00C853),
-                            ));
+                            AppToast.success(context,
+                                video ? 'Video uploaded ✅' : 'Photo uploaded ✅');
                           } on ApiException catch (e) {
                             if (!dialogContext.mounted) return;
                             setSheetState(() => uploading = false);
-                            ScaffoldMessenger.of(dialogContext)
-                                .showSnackBar(SnackBar(
-                              content: Text(e.code == 'NETWORK'
-                                  ? 'Upload failed — check your connection and try again.'
-                                  : e.message),
-                              backgroundColor: Colors.redAccent,
-                            ));
+                            AppToast.error(
+                                dialogContext,
+                                e.code == 'NETWORK'
+                                    ? 'Upload failed — check your connection and try again.'
+                                    : e.message);
                           } catch (_) {
                             if (!dialogContext.mounted) return;
                             setSheetState(() => uploading = false);
-                            ScaffoldMessenger.of(dialogContext)
-                                .showSnackBar(const SnackBar(
-                              content:
-                                  Text('Upload failed — please try again.'),
-                              backgroundColor: Colors.redAccent,
-                            ));
+                            AppToast.error(dialogContext,
+                                'Upload failed — please try again.');
                           }
                         },
                   style: ElevatedButton.styleFrom(
@@ -631,6 +612,9 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
               const SizedBox(height: 16),
 
               // ── Add New ──
+              // Uploading playbook content is a coach capability; players
+              // only browse, so the upload card is hidden for them.
+              if (ApiClient.instance.role == 'COACH')
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: GestureDetector(
