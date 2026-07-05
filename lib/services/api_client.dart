@@ -177,7 +177,7 @@ class ApiClient {
           await req.send().timeout(const Duration(minutes: 5)));
     } catch (_) {
       throw ApiException(0, 'NETWORK',
-          'Could not reach the server. Check your connection and API_BASE_URL.');
+          'Could not reach the server at $baseUrl — check that the phone can open $baseUrl/health in a browser.');
     }
     final Map<String, dynamic> json;
     try {
@@ -212,7 +212,7 @@ class ApiClient {
           await req.send().timeout(const Duration(seconds: 20)));
     } catch (_) {
       throw ApiException(0, 'NETWORK',
-          'Could not reach the server. Check your connection and API_BASE_URL.');
+          'Could not reach the server at $baseUrl — check that the phone can open $baseUrl/health in a browser.');
     }
 
     // Transparent one-shot refresh on expired access token.
