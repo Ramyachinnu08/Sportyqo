@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import 'complete_coach_profile_screen.dart';
+import '../shared/app_toast.dart';
 
 class CreateCoachAccountScreen extends StatefulWidget {
   const CreateCoachAccountScreen({super.key});
@@ -181,10 +182,7 @@ class _CreateCoachAccountScreenState extends State<CreateCoachAccountScreen> {
                       error = 'Password must be at least 8 characters';
                     }
                     if (error != null) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(error),
-                        backgroundColor: Colors.redAccent,
-                      ));
+                      AppToast.error(context, error);
                       return;
                     }
                     final draft = RegistrationDraft.instance;

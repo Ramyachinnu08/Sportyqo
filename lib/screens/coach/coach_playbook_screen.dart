@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../theme/app_theme.dart';
+import '../../services/api_client.dart';
 import '../../services/sportyqo_api.dart';
+import '../shared/app_toast.dart';
+import '../shared/avatar_picker.dart';
 
 class CoachPlaybookScreen extends StatefulWidget {
   const CoachPlaybookScreen({super.key});
@@ -108,6 +112,26 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
             .toList();
         _loading = false;
       });
+      // A coach whose leagues have no members yet would see an empty
+      // "Recommend Players" list — fall back to the community leaderboard.
+      if (_recommendedPlayers.isEmpty) {
+        final discovered = (await SportyQoApi.discoverPlayers())
+            .cast<Map<String, dynamic>>();
+        if (!mounted) return;
+        setState(() {
+          _recommendedPlayers = discovered
+              .take(3)
+              .map((r) => {
+                    'name': r['fullName'] ?? '',
+                    'role': (r['academy'] as String?)?.isNotEmpty == true
+                        ? r['academy'] as String
+                        : (r['sport'] as String? ?? 'Player'),
+                    'emoji': r['sportEmoji'] ?? '🏅',
+                    'pts': (r['qoScore'] as num?)?.toInt() ?? 0,
+                  })
+              .toList();
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -141,14 +165,11 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
                       GestureDetector(
                         onTap: () => _showProfileImageDialog(context),
                         child: Stack(children: [
-                          Container(
-                            width: 80, height: 80,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: AppColors.primary, width: 2),
-                              color: const Color(0xFF1A1A1A),
-                            ),
-                            child: const Center(child: Text('👤', style: TextStyle(fontSize: 40))),
+                          AvatarCircle(
+                            avatarUrl: _me?['avatarUrl'] as String?,
+                            name: _me?['fullName'] as String? ?? 'Coach',
+                            size: 80,
+                            borderColor: AppColors.primary,
                           ),
                           Positioned(
                             top: 0, left: 0,
@@ -443,16 +464,12 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             // Large profile view
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.primary, width: 3),
-                color: const Color(0xFF1A1A1A),
-              ),
-              child: const Center(
-                  child: Text('👤', style: TextStyle(fontSize: 64))),
+            AvatarCircle(
+              avatarUrl: _me?['avatarUrl'] as String?,
+              name: _me?['fullName'] as String? ?? 'Coach',
+              size: 120,
+              borderColor: AppColors.primary,
+              borderWidth: 3,
             ),
             const SizedBox(height: 12),
             Text(_me?['fullName'] as String? ?? 'Coach',
@@ -467,13 +484,15 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
             Row(children: [
               Expanded(
                 child: GestureDetector(
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Camera opened 📷'),
-                          backgroundColor: Color(0xFF00C853)),
-                    );
+                    final url = await pickAndUploadAvatar(
+                        context, ImageSource.camera,
+                        accent: AppColors.primary);
+                    if (url != null && mounted) {
+                      setState(() =>
+                          _me = {...?_me, 'avatarUrl': url});
+                    }
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -497,13 +516,15 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: GestureDetector(
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Gallery opened 🖼️'),
-                          backgroundColor: Color(0xFF00C853)),
-                    );
+                    final url = await pickAndUploadAvatar(
+                        context, ImageSource.gallery,
+                        accent: AppColors.primary);
+                    if (url != null && mounted) {
+                      setState(() =>
+                          _me = {...?_me, 'avatarUrl': url});
+                    }
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -593,12 +614,8 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
                 GestureDetector(
                   onTap: () {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('${p['name']} recommended! ✅'),
-                        backgroundColor: AppColors.primary,
-                      ),
-                    );
+                    AppToast.success(
+                        context, "${p['name']} recommended! ✅");
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -636,10 +653,19 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
     );
   }
 
+  /// Add-content sheet: title, description and kind — plus an optional
+  /// photo/video attachment that is uploaded to POST /playbook as
+  /// multipart media (previously the coach sheet was text-only, so
+  /// coaches could not upload media at all).
   void _showUploadDialog(BuildContext context) {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     String kind = 'DRILL';
+    XFile? media;
+    bool isVideo = false;
+    bool uploading = false;
+    final progress = ValueNotifier<double>(0);
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -647,114 +673,298 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(
-              24, 24, 24, 24 + MediaQuery.of(sheetContext).viewInsets.bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Add New Content',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800)),
-              const SizedBox(height: 16),
-              TextField(
-                controller: titleCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Title',
-                  hintStyle: const TextStyle(color: Colors.white38),
-                  filled: true,
-                  fillColor: const Color(0xFF1A1A1A),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: descCtrl,
-                style: const TextStyle(color: Colors.white),
-                maxLines: 3,
-                decoration: InputDecoration(
-                  hintText: 'Description (optional)',
-                  hintStyle: const TextStyle(color: Colors.white38),
-                  filled: true,
-                  fillColor: const Color(0xFF1A1A1A),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final k in ['DRILL', 'STRATEGY', 'VIDEO', 'NOTE'])
-                    ChoiceChip(
-                      label: Text(k[0] + k.substring(1).toLowerCase()),
-                      selected: kind == k,
-                      selectedColor: AppColors.primary.withOpacity(0.3),
-                      backgroundColor: const Color(0xFF1A1A1A),
-                      labelStyle: TextStyle(
-                          color: kind == k
-                              ? AppColors.primary
-                              : Colors.white54,
-                          fontSize: 12),
-                      onSelected: (_) => setSheetState(() => kind = k),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    final title = titleCtrl.text.trim();
-                    if (title.isEmpty) return;
-                    Navigator.pop(sheetContext);
-                    try {
-                      await SportyQoApi.createPlaybookItem(
-                          title: title,
-                          description: descCtrl.text.trim(),
-                          kind: kind);
-                      await _load();
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Content added ✅'),
-                            backgroundColor: Color(0xFF00C853)),
-                      );
-                    } catch (_) {
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Could not save — try again'),
-                            backgroundColor: Colors.redAccent),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+        builder: (sheetContext, setSheetState) {
+          Future<void> pick({required bool video}) async {
+            try {
+              final picker = ImagePicker();
+              final picked = video
+                  ? await picker.pickVideo(
+                      source: ImageSource.gallery,
+                      maxDuration: const Duration(minutes: 3))
+                  : await picker.pickImage(
+                      source: ImageSource.gallery,
+                      maxWidth: 1920,
+                      imageQuality: 88);
+              if (picked != null) {
+                setSheetState(() {
+                  media = picked;
+                  isVideo = video;
+                  if (video) kind = 'VIDEO';
+                });
+              }
+            } catch (_) {
+              AppToast.error(sheetContext,
+                  'Could not open the gallery. Check the app permissions in Settings.');
+            }
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(24, 24, 24,
+                24 + MediaQuery.of(sheetContext).viewInsets.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Add New Content',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800)),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: titleCtrl,
+                  enabled: !uploading,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Title',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    filled: true,
+                    fillColor: const Color(0xFF1A1A1A),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none),
                   ),
-                  child: const Text('Save',
-                      style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w700)),
                 ),
-              ),
-              TextButton(
-                  onPressed: () => Navigator.pop(sheetContext),
-                  child: const Center(
-                      child: Text('Cancel',
-                          style: TextStyle(color: Colors.white38)))),
-            ],
-          ),
-        ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: descCtrl,
+                  enabled: !uploading,
+                  style: const TextStyle(color: Colors.white),
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    hintText: 'Description (optional)',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    filled: true,
+                    fillColor: const Color(0xFF1A1A1A),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final k in ['DRILL', 'STRATEGY', 'VIDEO', 'NOTE'])
+                      ChoiceChip(
+                        label: Text(k[0] + k.substring(1).toLowerCase()),
+                        selected: kind == k,
+                        selectedColor: AppColors.primary.withOpacity(0.3),
+                        backgroundColor: const Color(0xFF1A1A1A),
+                        labelStyle: TextStyle(
+                            color: kind == k
+                                ? AppColors.primary
+                                : Colors.white54,
+                            fontSize: 12),
+                        onSelected: uploading
+                            ? null
+                            : (_) => setSheetState(() => kind = k),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // ── Media attachment ──
+                if (media == null)
+                  Row(children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed:
+                            uploading ? null : () => pick(video: false),
+                        icon: const Icon(Icons.photo_outlined,
+                            size: 18, color: AppColors.primary),
+                        label: const Text('Add Photo',
+                            style: TextStyle(
+                                color: AppColors.primary, fontSize: 13)),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                              color: AppColors.primary.withOpacity(0.5)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed:
+                            uploading ? null : () => pick(video: true),
+                        icon: const Icon(Icons.videocam_outlined,
+                            size: 18, color: AppColors.primary),
+                        label: const Text('Add Video',
+                            style: TextStyle(
+                                color: AppColors.primary, fontSize: 13)),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                              color: AppColors.primary.withOpacity(0.5)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ])
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A1A),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: AppColors.primary.withOpacity(0.4)),
+                    ),
+                    child: Row(children: [
+                      Icon(isVideo ? Icons.videocam : Icons.photo,
+                          size: 18, color: AppColors.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          media!.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 12.5),
+                        ),
+                      ),
+                      if (!uploading)
+                        GestureDetector(
+                          onTap: () => setSheetState(() {
+                            media = null;
+                            isVideo = false;
+                          }),
+                          child: const Icon(Icons.close,
+                              size: 18, color: Colors.white38),
+                        ),
+                    ]),
+                  ),
+
+                if (uploading) ...[
+                  const SizedBox(height: 14),
+                  ValueListenableBuilder<double>(
+                    valueListenable: progress,
+                    builder: (_, v, __) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: LinearProgressIndicator(
+                            value: v > 0 ? v : null,
+                            minHeight: 6,
+                            backgroundColor: Colors.white10,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          v >= 1.0
+                              ? 'Processing…'
+                              : 'Uploading… ${(v * 100).toStringAsFixed(0)}%',
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 11.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: uploading
+                        ? null
+                        : () async {
+                            final title = titleCtrl.text.trim();
+                            if (title.length < 3) {
+                              AppToast.error(sheetContext,
+                                  'Give it a title (3+ characters)');
+                              return;
+                            }
+                            // Text-only note — no media attached.
+                            if (media == null) {
+                              Navigator.pop(sheetContext);
+                              try {
+                                await SportyQoApi.createPlaybookItem(
+                                    title: title,
+                                    description: descCtrl.text.trim(),
+                                    kind: kind);
+                                await _load();
+                                if (!context.mounted) return;
+                                AppToast.success(
+                                    context, 'Content added ✅');
+                              } on ApiException catch (e) {
+                                if (!context.mounted) return;
+                                AppToast.error(context, e.message);
+                              } catch (_) {
+                                if (!context.mounted) return;
+                                AppToast.error(
+                                    context, 'Could not save — try again');
+                              }
+                              return;
+                            }
+                            // Media upload with progress.
+                            setSheetState(() => uploading = true);
+                            try {
+                              await SportyQoApi.uploadPlaybookMedia(
+                                filePath: media!.path,
+                                title: title,
+                                description: descCtrl.text.trim(),
+                                kind: isVideo ? 'VIDEO' : kind,
+                                onProgress: (v) => progress.value = v,
+                              );
+                              if (!sheetContext.mounted) return;
+                              Navigator.pop(sheetContext);
+                              await _load();
+                              if (!context.mounted) return;
+                              AppToast.success(
+                                  context,
+                                  isVideo
+                                      ? 'Video uploaded ✅'
+                                      : 'Photo uploaded ✅');
+                            } on ApiException catch (e) {
+                              if (!sheetContext.mounted) return;
+                              setSheetState(() => uploading = false);
+                              AppToast.error(
+                                  sheetContext,
+                                  e.code == 'NETWORK'
+                                      ? 'Upload failed — check your connection and try again.'
+                                      : e.message);
+                            } catch (_) {
+                              if (!sheetContext.mounted) return;
+                              setSheetState(() => uploading = false);
+                              AppToast.error(sheetContext,
+                                  'Upload failed — please try again.');
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text(
+                        uploading
+                            ? 'Uploading…'
+                            : (media == null ? 'Save' : 'Upload'),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                if (!uploading)
+                  TextButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      child: const Center(
+                          child: Text('Cancel',
+                              style: TextStyle(color: Colors.white38)))),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

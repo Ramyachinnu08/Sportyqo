@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
-import '../../services/sportyqo_api.dart';
 import '../../services/api_client.dart';
+import '../../services/sportyqo_api.dart';
+import '../shared/app_toast.dart';
 
 class CoachDugoutScreen extends StatefulWidget {
   const CoachDugoutScreen({super.key});
@@ -36,18 +37,33 @@ class _CoachDugoutScreenState extends State<CoachDugoutScreen> {
 
   Future<void> _loadPlayers() async {
     try {
-      final data = await SportyQoApi.searchPlayers();
+      // League-scoped list first (players who joined this coach's leagues)…
+      var data = (await SportyQoApi.searchPlayers())
+          .cast<Map<String, dynamic>>();
+      // …but a fresh coach has no leagues/members yet, which made the
+      // Dugout look broken ("registered players not visible"). Fall back
+      // to the community discovery leaderboard every player appears on.
+      if (data.isEmpty) {
+        data = (await SportyQoApi.discoverPlayers())
+            .cast<Map<String, dynamic>>();
+      }
       if (!mounted) return;
       setState(() {
-        _players = data.cast<Map<String, dynamic>>().map((r) => {
+        _players = data.map((r) => {
               'id': r['id'],
               'name': r['fullName'] ?? 'Player',
-              'role': r['position'] ?? 'Player',
+              'role': r['position'] ??
+                  ((r['academy'] as String?)?.isNotEmpty == true
+                      ? r['academy']
+                      : (r['sport'] ?? 'Player')),
               'pts': r['qoScore'] ?? 0,
               'emoji': r['sportEmoji'] ?? '🏅',
               'following': r['isFollowing'] == true,
               'followers': '${r['followers'] ?? 0}',
-              'team': r['teamName'] ?? 'No team yet',
+              'team': r['teamName'] ??
+                  ((r['location'] as String?)?.isNotEmpty == true
+                      ? r['location']
+                      : 'No team yet'),
             }).toList();
         _loadingPlayers = false;
       });
@@ -907,6 +923,15 @@ class _MessageScreenState extends State<_MessageScreen> {
         _loading = false;
       });
       _jumpToEnd();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      AppToast.error(
+          context,
+          e.code == 'FORBIDDEN'
+              ? 'You can only chat with players in your leagues — invite them to one of your leagues first.'
+              : e.message);
+      Navigator.pop(context);
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -945,10 +970,7 @@ class _MessageScreenState extends State<_MessageScreen> {
       await SportyQoApi.sendDugoutMessage(_threadId!, text);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Message failed to send'),
-          backgroundColor: Colors.redAccent,
-        ));
+        AppToast.error(context, 'Message failed to send');
       }
     } finally {
       if (mounted) setState(() => _sending = false);

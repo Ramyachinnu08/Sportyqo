@@ -17,6 +17,8 @@ class RegistrationDraft {
   String? gender; // MALE / FEMALE / OTHER
   String? location;
   String? avatarPath; // local file picked during sign-up
+  int? yearsExperience; // coach: from the Complete Profile screen
+  String? coachTitle; // coach: coaching level, e.g. "A License Coach"
 
   void reset() {
     fullName = '';
@@ -29,6 +31,8 @@ class RegistrationDraft {
     gender = null;
     location = null;
     avatarPath = null;
+    yearsExperience = null;
+    coachTitle = null;
   }
 }
 
@@ -87,6 +91,11 @@ class AuthService {
         'location': d.location,
       if (d.gender != null) 'gender': d.gender,
       if (d.dob != null) 'dob': d.dob,
+      // Coach-only details from the Complete Profile screen.
+      if (!d.isPlayer && d.yearsExperience != null)
+        'yearsExperience': d.yearsExperience,
+      if (!d.isPlayer && d.coachTitle != null && d.coachTitle!.isNotEmpty)
+        'title': d.coachTitle,
     };
     if (fields.isNotEmpty) {
       try {

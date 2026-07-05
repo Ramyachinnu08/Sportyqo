@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../coach/select_coach_sport_screen.dart';
+import '../shared/app_toast.dart';
 
 class CompleteCoachProfileScreen extends StatefulWidget {
   const CompleteCoachProfileScreen({super.key});
@@ -33,10 +34,7 @@ class _CompleteCoachProfileScreenState
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Could not pick an image on this device.'),
-        backgroundColor: Colors.redAccent,
-      ));
+      AppToast.error(context, 'Could not pick an image on this device.');
     }
   }
 
@@ -189,23 +187,8 @@ class _CompleteCoachProfileScreenState
               ),
 
               const SizedBox(height: 24),
-              _buildTextField(
-                  hint: 'Full Name',
-                  icon: Icons.person_outline,
-                  isDark: isDark),
-              const SizedBox(height: 14),
-              _buildTextField(
-                  hint: 'Email',
-                  icon: Icons.email_outlined,
-                  isDark: isDark,
-                  keyboardType: TextInputType.emailAddress),
-              const SizedBox(height: 14),
-              _buildTextField(
-                  hint: 'Phone Number',
-                  icon: Icons.phone_outlined,
-                  isDark: isDark,
-                  keyboardType: TextInputType.phone),
-              const SizedBox(height: 14),
+              // Name, email and phone were already collected on the previous
+              // screen — only coach-specific details are asked here.
               _buildDropdown(
                 label: 'Experience',
                 value: _experience,
@@ -232,6 +215,14 @@ class _CompleteCoachProfileScreenState
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
+                    final draft = RegistrationDraft.instance;
+                    draft.yearsExperience = switch (_experience) {
+                      '1-3 Years' => 2,
+                      '3-5 Years' => 4,
+                      '5-8 Years' => 6,
+                      _ => 8,
+                    };
+                    draft.coachTitle = '$_level Coach';
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -255,25 +246,6 @@ class _CompleteCoachProfileScreenState
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required String hint,
-    required IconData icon,
-    required bool isDark,
-    TextInputType? keyboardType,
-  }) {
-    return TextField(
-      keyboardType: keyboardType,
-      style: TextStyle(
-          color: isDark ? AppColors.textWhite : AppColors.textDark),
-      decoration: InputDecoration(
-        hintText: hint,
-        prefixIcon: Icon(icon, color: AppColors.textGrey, size: 20),
-        contentPadding:
-        const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
       ),
     );
   }
