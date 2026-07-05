@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/api_client.dart';
 import '../../services/sportyqo_api.dart';
+import '../shared/app_toast.dart';
 
 class CoachPerformanceScreen extends StatefulWidget {
   const CoachPerformanceScreen({super.key});
@@ -30,24 +32,36 @@ class _CoachPerformanceScreenState
 
   Future<void> _loadPlayers() async {
     try {
-      final data = await SportyQoApi.searchPlayers();
+      // Players in this coach's leagues first…
+      var data =
+          (await SportyQoApi.searchPlayers()).cast<Map<String, dynamic>>();
+      // …falling back to the community leaderboard when the coach's
+      // leagues have no members yet, so the section is never empty.
+      if (data.isEmpty) {
+        data = (await SportyQoApi.discoverPlayers())
+            .cast<Map<String, dynamic>>();
+      }
       if (!mounted) return;
       setState(() {
-        _players = data.cast<Map<String, dynamic>>().map((r) {
+        _players = data.map((r) {
           final dt =
               DateTime.tryParse(r['joinedAt'] as String? ?? '')?.toLocal();
           return {
             'id': r['id'],
             'name': r['fullName'] ?? '',
-            'sqid': r['playerId'] ?? '',
-            'role': r['teamName'] ?? 'No team yet',
-            'subRole': r['position'] ?? '',
+            'sqid': r['playerId'] ?? r['playerCode'] ?? '',
+            'role': r['teamName'] ??
+                ((r['academy'] as String?)?.isNotEmpty == true
+                    ? r['academy']
+                    : 'No team yet'),
+            'subRole': r['position'] ?? (r['sport'] ?? ''),
             'qoScore': (r['qoScore'] as num?)?.toInt() ?? 0,
             'added': dt == null
                 ? ''
                 : '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}',
             'active': r['onTeam'] == true,
             'emoji': r['sportEmoji'] ?? '🏅',
+            'recommended': r['isRecommended'] == true,
           };
         }).toList();
         _loading = false;
@@ -542,15 +556,24 @@ class _CoachPerformanceScreenState
             Row(children: [
               Expanded(
                 child: GestureDetector(
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content:
-                        Text('${player['name']} recommended! ✅'),
-                        backgroundColor: AppColors.primary,
-                      ),
-                    );
+                    final id = player['id'] as String?;
+                    if (id == null) return;
+                    try {
+                      await SportyQoApi.recommendPlayer(id);
+                      if (!mounted) return;
+                      setState(() => player['recommended'] = true);
+                      AppToast.success(this.context,
+                          "${player['name']} recommended! ✅");
+                    } on ApiException catch (e) {
+                      if (!mounted) return;
+                      AppToast.error(this.context, e.message);
+                    } catch (_) {
+                      if (!mounted) return;
+                      AppToast.error(
+                          this.context, 'Could not send — try again.');
+                    }
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -645,21 +668,12 @@ class _CoachPerformanceScreenState
                   Navigator.pop(context);
                   _addPlayerController.clear();
                   if (id.isNotEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                            'Players join with your league code — share it from the league screen. They will appear here once they join.'),
-                        backgroundColor: Color(0xFF1A6BFF),
-                        duration: Duration(seconds: 4),
-                      ),
-                    );
+                    AppToast.info(
+                        context,
+                        'Players join with your league code — share it from the league screen. They will appear here once they join.',
+                        duration: const Duration(seconds: 4));
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Please enter a SportyQo ID'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
+                    AppToast.error(context, 'Please enter a SportyQo ID');
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -681,92 +695,155 @@ class _CoachPerformanceScreenState
     );
   }
 
+  /// "Recommend Now": lists the coach's top players (by Qo score) with a
+  /// real Send action — POST /players/:id/recommend records it and
+  /// notifies the player. Rows flip to "Sent ✓" once recommended.
   void _showRecommendNow(BuildContext context) {
+    final sending = <String>{};
+    final top = [..._players]
+      ..sort((a, b) =>
+          (b['qoScore'] as int).compareTo(a['qoScore'] as int));
+    final list = top.take(8).toList();
+
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF111111),
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Recommend Players',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800)),
-            const SizedBox(height: 6),
-            const Text(
-                'Select players to recommend to clubs and leagues.',
-                style: TextStyle(color: Colors.white54, fontSize: 13)),
-            const SizedBox(height: 20),
-            ..._players
-                .where((p) => p['active'] == true)
-                .map((p) => Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white10),
-              ),
-              child: Row(children: [
-                Text(p['emoji'] as String,
-                    style: const TextStyle(fontSize: 24)),
-                const SizedBox(width: 12),
-                Expanded(
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Recommend Players',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              const Text(
+                  'Select players to recommend to clubs and leagues.',
+                  style: TextStyle(color: Colors.white54, fontSize: 13)),
+              const SizedBox(height: 20),
+              if (list.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text('No players to recommend yet.',
+                        style:
+                            TextStyle(color: Colors.white38, fontSize: 13)),
+                  ),
+                ),
+              Flexible(
+                child: SingleChildScrollView(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(p['name'] as String,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13)),
-                      Text('${p['role']} • ${p['sqid']}',
-                          style: const TextStyle(
-                              color: Colors.white38,
-                              fontSize: 11)),
-                    ],
+                    children: list.map((p) {
+                      final id = p['id'] as String?;
+                      final sent = p['recommended'] == true;
+                      final busy = id != null && sending.contains(id);
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A1A1A),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: Row(children: [
+                          Text(p['emoji'] as String,
+                              style: const TextStyle(fontSize: 24)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Text(p['name'] as String,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13)),
+                                Text("${p['role']} • ${p['sqid']}",
+                                    style: const TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: (id == null || sent || busy)
+                                ? null
+                                : () async {
+                                    setSheetState(() => sending.add(id));
+                                    try {
+                                      await SportyQoApi.recommendPlayer(id);
+                                      if (!sheetContext.mounted) return;
+                                      setSheetState(() {
+                                        sending.remove(id);
+                                        p['recommended'] = true;
+                                      });
+                                      AppToast.success(sheetContext,
+                                          "${p['name']} recommended to clubs! ✅");
+                                    } on ApiException catch (e) {
+                                      if (!sheetContext.mounted) return;
+                                      setSheetState(
+                                          () => sending.remove(id));
+                                      AppToast.error(
+                                          sheetContext, e.message);
+                                    } catch (_) {
+                                      if (!sheetContext.mounted) return;
+                                      setSheetState(
+                                          () => sending.remove(id));
+                                      AppToast.error(sheetContext,
+                                          'Could not send — try again.');
+                                    }
+                                  },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: sent
+                                    ? AppColors.primary.withOpacity(0.15)
+                                    : AppColors.primary,
+                                borderRadius: BorderRadius.circular(20),
+                                border: sent
+                                    ? Border.all(
+                                        color: AppColors.primary
+                                            .withOpacity(0.5))
+                                    : null,
+                              ),
+                              child: busy
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white))
+                                  : Text(sent ? 'Sent ✓' : 'Recommend',
+                                      style: TextStyle(
+                                          color: sent
+                                              ? AppColors.primary
+                                              : Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 11)),
+                            ),
+                          ),
+                        ]),
+                      );
+                    }).toList(),
                   ),
                 ),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                            '${p['name']} recommended to clubs! ✅'),
-                        backgroundColor: AppColors.primary,
-                      ),
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text('Recommend',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 11)),
-                  ),
-                ),
-              ]),
-            )),
-            const SizedBox(height: 8),
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close',
-                    style: TextStyle(color: Colors.white38))),
-          ],
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  child: const Text('Close',
+                      style: TextStyle(color: Colors.white38))),
+            ],
+          ),
         ),
       ),
     );

@@ -104,10 +104,12 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
         _recommendedPlayers = sorted
             .take(3)
             .map((r) => {
+                  'id': r['id'],
                   'name': r['fullName'] ?? '',
                   'role': r['teamName'] ?? 'No team yet',
                   'emoji': r['sportEmoji'] ?? '🏅',
                   'pts': (r['qoScore'] as num?)?.toInt() ?? 0,
+                  'recommended': r['isRecommended'] == true,
                 })
             .toList();
         _loading = false;
@@ -122,12 +124,14 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
           _recommendedPlayers = discovered
               .take(3)
               .map((r) => {
+                    'id': r['id'],
                     'name': r['fullName'] ?? '',
                     'role': (r['academy'] as String?)?.isNotEmpty == true
                         ? r['academy'] as String
                         : (r['sport'] as String? ?? 'Player'),
                     'emoji': r['sportEmoji'] ?? '🏅',
                     'pts': (r['qoScore'] as num?)?.toInt() ?? 0,
+                    'recommended': r['isRecommended'] == true,
                   })
               .toList();
         });
@@ -557,88 +561,142 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
     );
   }
 
+  /// Bottom sheet listing top players with a real "Send" action:
+  /// POST /players/:id/recommend records the recommendation and notifies
+  /// the player. Rows show a persistent "Sent ✓" state afterwards.
   void _showRecommendPlayers(BuildContext context) {
+    final sending = <String>{};
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF111111),
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Recommend Players',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800)),
-            const SizedBox(height: 6),
-            const Text('Select players to recommend to clubs & leagues.',
-                style: TextStyle(color: Colors.white54, fontSize: 13)),
-            const SizedBox(height: 20),
-            ..._recommendedPlayers.map((p) => Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white10),
-              ),
-              child: Row(children: [
-                Text(p['emoji'], style: const TextStyle(fontSize: 28)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(p['name'],
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14)),
-                      Text(p['role'],
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 12)),
-                    ],
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Recommend Players',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              const Text('Select players to recommend to clubs & leagues.',
+                  style: TextStyle(color: Colors.white54, fontSize: 13)),
+              const SizedBox(height: 20),
+              if (_recommendedPlayers.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text('No players to recommend yet.',
+                        style:
+                            TextStyle(color: Colors.white38, fontSize: 13)),
                   ),
                 ),
-                Text('${p['pts']} pts',
-                    style: const TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12)),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context);
-                    AppToast.success(
-                        context, "${p['name']} recommended! ✅");
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(20),
+              ..._recommendedPlayers.map((p) {
+                final id = p['id'] as String?;
+                final sent = p['recommended'] == true;
+                final busy = id != null && sending.contains(id);
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: Row(children: [
+                    Text(p['emoji'], style: const TextStyle(fontSize: 28)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(p['name'],
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14)),
+                          Text(p['role'],
+                              style: const TextStyle(
+                                  color: Colors.white54, fontSize: 12)),
+                        ],
+                      ),
                     ),
-                    child: const Text('Send',
-                        style: TextStyle(
-                            color: Colors.white,
+                    Text('${p['pts']} pts',
+                        style: const TextStyle(
+                            color: AppColors.primary,
                             fontWeight: FontWeight.w700,
                             fontSize: 12)),
-                  ),
-                ),
-              ]),
-            )),
-            const SizedBox(height: 8),
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel',
-                    style: TextStyle(color: Colors.white38))),
-          ],
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: (id == null || sent || busy)
+                          ? null
+                          : () async {
+                              setSheetState(() => sending.add(id));
+                              try {
+                                await SportyQoApi.recommendPlayer(id);
+                                if (!sheetContext.mounted) return;
+                                setSheetState(() {
+                                  sending.remove(id);
+                                  p['recommended'] = true;
+                                });
+                                AppToast.success(sheetContext,
+                                    "${p['name']} recommended! ✅");
+                              } on ApiException catch (e) {
+                                if (!sheetContext.mounted) return;
+                                setSheetState(() => sending.remove(id));
+                                AppToast.error(sheetContext, e.message);
+                              } catch (_) {
+                                if (!sheetContext.mounted) return;
+                                setSheetState(() => sending.remove(id));
+                                AppToast.error(sheetContext,
+                                    'Could not send — try again.');
+                              }
+                            },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: sent
+                              ? AppColors.primary.withOpacity(0.15)
+                              : AppColors.primary,
+                          borderRadius: BorderRadius.circular(20),
+                          border: sent
+                              ? Border.all(
+                                  color:
+                                      AppColors.primary.withOpacity(0.5))
+                              : null,
+                        ),
+                        child: busy
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : Text(sent ? 'Sent ✓' : 'Send',
+                                style: TextStyle(
+                                    color: sent
+                                        ? AppColors.primary
+                                        : Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12)),
+                      ),
+                    ),
+                  ]),
+                );
+              }),
+              const SizedBox(height: 8),
+              TextButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  child: const Text('Close',
+                      style: TextStyle(color: Colors.white38))),
+            ],
+          ),
         ),
       ),
     );

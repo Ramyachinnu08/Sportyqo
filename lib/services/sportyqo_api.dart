@@ -318,6 +318,16 @@ class SportyQoApi {
     await _api.delete('/playbook/$id');
   }
 
+  /// Coach recommends a player to clubs & leagues. The player receives a
+  /// notification the first time a given coach recommends them; calling it
+  /// again just refreshes the recommendation.
+  static Future<Map<String, dynamic>> recommendPlayer(String userId,
+      {String? note}) async {
+    return await _api.post('/players/$userId/recommend', body: {
+      if (note != null && note.isNotEmpty) 'note': note,
+    }) as Map<String, dynamic>;
+  }
+
   static Future<List<dynamic>> dugoutThreads() async {
     return await _api.get('/dugout') as List<dynamic>;
   }

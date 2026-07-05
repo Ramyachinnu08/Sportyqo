@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../shared/avatar_picker.dart';
+import '../shared/app_toast.dart';
 import 'package:flutter/services.dart';
 import '../auth/choose_role_screen.dart';
 import '../../services/sportyqo_api.dart';
@@ -401,22 +402,33 @@ class _CoachProfileScreenState
                           crossAxisAlignment:
                           CrossAxisAlignment.start,
                           children: [
-                            Row(children: const [
-                              Icon(Icons.person_outline,
+                            Row(children: [
+                              const Icon(Icons.person_outline,
                                   color: Color(0xFF00C853),
                                   size: 18),
-                              SizedBox(width: 8),
-                              Text('About Coach',
+                              const SizedBox(width: 8),
+                              const Text('About Coach',
                                   style: TextStyle(
                                       color: Colors.white,
                                       fontWeight:
                                       FontWeight.w700,
                                       fontSize: 15)),
+                              const Spacer(),
+                              // Direct path to edit the bio — it was
+                              // only reachable via Settings before.
+                              GestureDetector(
+                                onTap: () =>
+                                    _showEditProfile(context),
+                                child: const Icon(
+                                    Icons.edit_outlined,
+                                    color: Colors.white38,
+                                    size: 18),
+                              ),
                             ]),
                             const SizedBox(height: 10),
                             Text(
                                 _bio.isEmpty
-                                    ? 'No bio added yet. Tap Edit Profile to add one.'
+                                    ? 'No bio added yet. Tap the pencil to add one.'
                                     : _bio,
                                 style: const TextStyle(
                                     color: Colors.white54,
@@ -757,12 +769,12 @@ class _CoachProfileScreenState
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
               top: Radius.circular(20))),
-      builder: (_) => Padding(
+      builder: (sheetCtx) => Padding(
         padding: EdgeInsets.fromLTRB(
             24,
             24,
             24,
-            MediaQuery.of(context).viewInsets.bottom + 24),
+            MediaQuery.of(sheetCtx).viewInsets.bottom + 24),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -826,41 +838,37 @@ class _CoachProfileScreenState
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () async {
-                    Navigator.pop(context);
+                    final name = nameController.text.trim();
+                    if (name.length < 2) {
+                      AppToast.error(
+                          sheetCtx, 'Please enter your full name');
+                      return;
+                    }
+                    Navigator.pop(sheetCtx);
                     try {
                       await ApiClient.instance
                           .patch('/me/profile', body: {
-                        'fullName': nameController.text.trim(),
+                        'fullName': name,
                         'title': roleController.text.trim(),
                         'academy': orgController.text.trim(),
                         'bio': bioController.text.trim(),
                       });
                       if (!mounted) return;
                       setState(() {
-                        _name = nameController.text.trim();
+                        _name = name;
                         _title = roleController.text.trim();
                         _academy = orgController.text.trim();
                         _bio = bioController.text.trim();
                       });
-                      ScaffoldMessenger.of(this.context)
-                          .showSnackBar(
-                        const SnackBar(
-                          content:
-                          Text('Profile updated! ✅'),
-                          backgroundColor:
-                          Color(0xFF00C853),
-                        ),
-                      );
+                      AppToast.success(
+                          this.context, 'Profile updated! ✅');
+                    } on ApiException catch (e) {
+                      if (!mounted) return;
+                      AppToast.error(this.context, e.message);
                     } catch (_) {
                       if (!mounted) return;
-                      ScaffoldMessenger.of(this.context)
-                          .showSnackBar(
-                        const SnackBar(
-                          content:
-                          Text('Could not update profile'),
-                          backgroundColor: Colors.redAccent,
-                        ),
-                      );
+                      AppToast.error(
+                          this.context, 'Could not update profile');
                     }
                   },
                   style: ElevatedButton.styleFrom(
