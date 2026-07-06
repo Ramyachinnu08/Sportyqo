@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/sportyqo_api.dart';
-import '../../services/api_client.dart';
 
+/// Performance (design p.8): Qo Score tier card → Card Progress →
+/// Qo Journey chart → Recent Matches → Ranking. All values come from
+/// GET /players/:id/performance (score, journey, matches, ranking).
 class PerformanceScreen extends StatefulWidget {
   const PerformanceScreen({super.key});
 
@@ -12,27 +14,12 @@ class PerformanceScreen extends StatefulWidget {
 
 class _PerformanceScreenState extends State<PerformanceScreen> {
   bool _loading = true;
-  String? _error;
-  String _journeyRange = 'This Season'; // This Season | Last 6 Months | Last 3 Months
   int _qoScore = 0;
-  int _weekPoints = 0;
-  Map<String, dynamic>? _ranking;
+  Map<String, dynamic>? _ranking; // {position, totalPlayers}
   List<Map<String, dynamic>> _journey = [];
-  List<Map<String, dynamic>> _recent = [];
-
-  static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-  // Card tiers by Qo score
-  ({String name, String label, Color color, int target, String next}) get _tier {
-    if (_qoScore >= 750) {
-      return (name: 'Purple Card', label: 'Elite Performer', color: AppColors.primary, target: 1000, next: 'Legend Card');
-    } else if (_qoScore >= 500) {
-      return (name: 'Blue Card', label: 'Strong Performer', color: Colors.blueAccent, target: 750, next: 'Purple Card');
-    } else if (_qoScore >= 250) {
-      return (name: 'Silver Card', label: 'Solid Performer', color: Colors.blueGrey, target: 500, next: 'Blue Card');
-    }
-    return (name: 'Bronze Card', label: 'Rising Star', color: Colors.orangeAccent, target: 250, next: 'Silver Card');
-  }
+  List<Map<String, dynamic>> _matches = [];
+  String? _sportName;
+  bool _showAllMatches = false;
 
   @override
   void initState() {
@@ -41,714 +28,604 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = _qoScore == 0 && _journey.isEmpty;
-      _error = null;
-    });
     try {
-      final data = await SportyQoApi.playerPerformance();
+      final data =
+          await SportyQoApi.playerPerformance() as Map<String, dynamic>;
       if (!mounted) return;
-      final recent = (data['recentMatches'] as List<dynamic>? ?? [])
-          .cast<Map<String, dynamic>>();
-      final now = DateTime.now();
-      int week = 0;
-      for (final r in recent) {
-        final dt = DateTime.tryParse(r['playedAt'] as String? ?? '');
-        if (dt != null && now.difference(dt).inDays < 7) {
-          week += (r['qoPoints'] as num?)?.toInt() ?? 0;
-        }
-      }
       setState(() {
         _qoScore = (data['qoScore'] as num?)?.toInt() ?? 0;
         _ranking = data['ranking'] as Map<String, dynamic>?;
-        _journey = (data['qoJourney'] as List<dynamic>? ?? [])
+        _journey = (data['qoJourney'] as List<dynamic>? ?? const [])
             .cast<Map<String, dynamic>>();
-        _recent = recent;
-        _weekPoints = week;
+        _matches = (data['recentMatches'] as List<dynamic>? ?? const [])
+            .cast<Map<String, dynamic>>();
         _loading = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = e.code == 'NETWORK'
-            ? 'Could not reach the SportyQo server.\nCheck your connection and try again.'
-            : e.message;
       });
     } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+    try {
+      final me = await SportyQoApi.me() as Map<String, dynamic>;
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = 'Something went wrong while loading your performance.';
-      });
-    }
+      setState(() =>
+          _sportName = (me['sport'] as Map<String, dynamic>?)?['name']);
+    } catch (_) {}
   }
 
-  /// Journey points filtered by the selected range dropdown.
-  List<Map<String, dynamic>> get _visibleJourney {
-    switch (_journeyRange) {
-      case 'Last 3 Months':
-        return _journey.length <= 3
-            ? _journey
-            : _journey.sublist(_journey.length - 3);
-      case 'Last 6 Months':
-        return _journey.length <= 6
-            ? _journey
-            : _journey.sublist(_journey.length - 6);
-      default:
-        return _journey;
+  // Qo card tiers (same thresholds as the Qo Score Card screen).
+  ({String name, Color color, int floor, int? ceil, String? next}) get _tier {
+    if (_qoScore >= 750) {
+      return (name: 'Purple Card', color: AppColors.primary, floor: 750, ceil: null, next: null);
     }
+    if (_qoScore >= 500) {
+      return (name: 'Blue Card', color: const Color(0xFF1A6BFF), floor: 500, ceil: 750, next: 'Purple Card');
+    }
+    if (_qoScore >= 250) {
+      return (name: 'Silver Card', color: const Color(0xFF9BA8B7), floor: 250, ceil: 500, next: 'Blue Card');
+    }
+    return (name: 'Bronze Card', color: const Color(0xFFCD7F32), floor: 0, ceil: 250, next: 'Silver Card');
   }
 
-  static String _fmtDate(String? iso) {
-    final dt = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
-    if (dt == null) return '';
-    return '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}';
-  }
-
-  static List<String> _statStrings(Map<String, dynamic>? stats) {
-    if (stats == null) return [];
-    final out = <String>[];
-    void add(String key, String singular, String plural) {
-      final v = (stats[key] as num?)?.toInt();
-      if (v != null && v > 0) out.add('$v ${v == 1 ? singular : plural}');
-    }
-    add('runs', 'Run', 'Runs');
-    add('wickets', 'Wicket', 'Wickets');
-    add('catches', 'Catch', 'Catches');
-    add('goals', 'Goal', 'Goals');
-    add('assists', 'Assist', 'Assists');
-    add('points', 'Point', 'Points');
-    return out;
+  int? get _weekDelta {
+    if (_journey.length < 2) return null;
+    return ((_journey.last['qoScore'] as num?) ?? 0).toInt() -
+        ((_journey[_journey.length - 2]['qoScore'] as num?) ?? 0).toInt();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF0A0A1A),
-        body: Center(
-            child: CircularProgressIndicator(color: AppColors.primary)),
-      );
-    }
-    if (_error != null) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF0A0A1A),
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.wifi_off_rounded,
-                      color: Colors.white38, size: 44),
-                  const SizedBox(height: 14),
-                  Text(_error!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          color: Colors.white54, fontSize: 13, height: 1.5)),
-                  const SizedBox(height: 18),
-                  ElevatedButton.icon(
-                    onPressed: _load,
-                    icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('Retry'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
+    final tier = _tier;
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A1A),
       body: SafeArea(
-        child: RefreshIndicator(
-          color: AppColors.primary,
-          backgroundColor: const Color(0xFF0F0F2A),
-          onRefresh: _load,
-          child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 16),
-
-              // ── Qo Score Card ──
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F0F2A),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Row(
+        child: _loading
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.primary))
+            : RefreshIndicator(
+                color: AppColors.primary,
+                backgroundColor: const Color(0xFF16162E),
+                onRefresh: _load,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Qo Score', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                          Text('$_qoScore', style: const TextStyle(color: Colors.white, fontSize: 52, fontWeight: FontWeight.w800, height: 1)),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: AppColors.primary.withOpacity(0.4)),
-                            ),
-                            child: Row(children: [
-                              Container(width: 8, height: 8, decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle)),
-                              const SizedBox(width: 6),
-                              Text(_tier.name, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-                            ]),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(_tier.label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                          const SizedBox(height: 6),
-                          if (_weekPoints > 0)
-                            Row(children: [
-                              const Icon(Icons.arrow_upward, color: AppColors.primary, size: 14),
-                              Text('+$_weekPoints points this week', style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w500)),
-                            ]),
-                        ],
+                    Row(children: const [
+                      Expanded(
+                        child: Text('Performance',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.w800)),
                       ),
-                    ),
-                    Container(
-                      width: 70, height: 70,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.primary.withOpacity(0.15),
-                        border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 2),
-                      ),
-                      child: const Icon(Icons.shield, color: AppColors.primary, size: 36),
-                    ),
+                      Icon(Icons.calendar_today_outlined,
+                          color: Colors.white70, size: 20),
+                    ]),
+                    const Text('Track your growth.',
+                        style:
+                            TextStyle(color: Colors.white54, fontSize: 13)),
+                    const SizedBox(height: 18),
+                    _scoreCard(tier),
+                    const SizedBox(height: 14),
+                    _cardProgress(tier),
+                    const SizedBox(height: 14),
+                    _qoJourney(),
+                    const SizedBox(height: 14),
+                    _recentMatches(),
+                    const SizedBox(height: 14),
+                    _rankingCard(),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 16),
-
-              // ── Card Progress ──
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F0F2A),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Card Progress', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                    const SizedBox(height: 12),
-                    Row(children: [
-                      Container(
-                        width: 28, height: 28,
-                        decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.2), shape: BoxShape.circle, border: Border.all(color: AppColors.primary.withOpacity(0.4))),
-                        child: const Icon(Icons.bolt, color: AppColors.primary, size: 16),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(_tier.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                      const Spacer(),
-                      RichText(
-                        text: TextSpan(children: [
-                          TextSpan(text: '$_qoScore', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 14)),
-                          TextSpan(text: ' / ${_tier.target}', style: const TextStyle(color: Colors.white38, fontSize: 13)),
-                        ]),
-                      ),
-                    ]),
-                    const SizedBox(height: 10),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: LinearProgressIndicator(value: (_qoScore / _tier.target).clamp(0.0, 1.0), backgroundColor: Colors.white10, color: AppColors.primary, minHeight: 8),
-                    ),
-                    const SizedBox(height: 8),
-                    RichText(
-                      text: TextSpan(children: [
-                        TextSpan(text: '${(_tier.target - _qoScore).clamp(0, _tier.target)} points to ', style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                        TextSpan(text: _tier.next, style: const TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.w600)),
-                      ]),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // ── Qo Journey Graph ──
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F0F2A),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      const Text('Qo Journey', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                      const Spacer(),
-                      PopupMenuButton<String>(
-                        color: const Color(0xFF13132B),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: const BorderSide(color: Colors.white10)),
-                        onSelected: (v) =>
-                            setState(() => _journeyRange = v),
-                        itemBuilder: (_) => const [
-                          'This Season',
-                          'Last 6 Months',
-                          'Last 3 Months',
-                        ]
-                            .map((v) => PopupMenuItem<String>(
-                                  value: v,
-                                  child: Text(v,
-                                      style: TextStyle(
-                                          color: v == _journeyRange
-                                              ? AppColors.primary
-                                              : Colors.white70,
-                                          fontSize: 13,
-                                          fontWeight: v == _journeyRange
-                                              ? FontWeight.w700
-                                              : FontWeight.w400)),
-                                ))
-                            .toList(),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                              color: Colors.white10,
-                              borderRadius: BorderRadius.circular(20)),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Text(_journeyRange,
-                                style: const TextStyle(
-                                    color: Colors.white60, fontSize: 12)),
-                            const Icon(Icons.keyboard_arrow_down,
-                                color: Colors.white38, size: 16),
-                          ]),
-                        ),
-                      ),
-                    ]),
-                    const SizedBox(height: 16),
-                    if (_visibleJourney.length >= 2) ...[
-                      SizedBox(
-                        height: 140,
-                        child: CustomPaint(
-                            painter: _PerformanceGraphPainter(
-                                values: _visibleJourney
-                                    .map((j) =>
-                                        ((j['qoScore'] as num?) ?? 0)
-                                            .toDouble())
-                                    .toList(),
-                                lastValueLabel:
-                                    '${(_visibleJourney.last['qoScore'] as num?)?.toInt() ?? 0}',
-                                lastDateLabel: _visibleJourney.last['label']
-                                        as String? ??
-                                    ''),
-                            size: const Size(double.infinity, 140)),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: _visibleJourney
-                            .map((j) => Text(j['label'] as String? ?? '',
-                                style: const TextStyle(
-                                    color: Colors.white38, fontSize: 10)))
-                            .toList(),
-                      ),
-                    ] else
-                      const SizedBox(
-                        height: 100,
-                        child: Center(
-                            child: Text(
-                                'Play matches to start your Qo Journey',
-                                style: TextStyle(
-                                    color: Colors.white38, fontSize: 13))),
-                      ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // ── Recent Matches ──
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Recent Matches',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16)),
-                  GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) =>
-                              _AllRecentMatchesScreen(matches: _recent)),
-                    ),
-                    child: const Text('View All',
-                        style: TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600)),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 10),
-
-              if (_recent.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F0F2A),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white10),
-                  ),
-                  child: const Center(
-                      child: Text('No matches played yet',
-                          style: TextStyle(
-                              color: Colors.white54, fontSize: 14))),
-                )
-              else
-                ..._recent.take(3).map((r) {
-                  final stats = _statStrings(r['stats'] as Map<String, dynamic>?);
-                  final opponent = r['opponent'] as String? ?? 'Match';
-                  final qp = (r['qoPoints'] as num?)?.toInt() ?? 0;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _MatchTile(
-                      teamLetter: opponent.replaceFirst('vs ', '').isEmpty
-                          ? '?'
-                          : opponent.replaceFirst('vs ', '')[0],
-                      opponent: opponent,
-                      date: _fmtDate(r['playedAt'] as String?),
-                      stat1: stats.isNotEmpty ? stats[0] : '',
-                      stat2: stats.length > 1 ? stats[1] : '',
-                      badge: (r['resultSummary'] as String?)?.isNotEmpty == true
-                          ? r['resultSummary'] as String
-                          : 'Completed',
-                      points: qp >= 0 ? '+$qp' : '$qp',
-                      badgeColor: const Color(0xFF00C853),
-                    ),
-                  );
-                }),
-
-              const SizedBox(height: 16),
-
-              // ── Ranking ──
-              if (_ranking != null)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F0F2A),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white10),
-                  ),
-                  child: Row(children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Ranking',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14)),
-                          const SizedBox(height: 8),
-                          Text('#${_ranking!['position']}',
-                              style: const TextStyle(
-                                  color: AppColors.primary,
-                                  fontSize: 36,
-                                  fontWeight: FontWeight.w800)),
-                          const Text('In your leagues',
-                              style: TextStyle(
-                                  color: Colors.white54, fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                    Column(children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.1),
-                            shape: BoxShape.circle),
-                        child: const Icon(Icons.people_outline,
-                            color: AppColors.primary, size: 26),
-                      ),
-                      const SizedBox(height: 4),
-                      Text('Out of ${_ranking!['totalPlayers']}',
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 10)),
-                      const Text('players',
-                          style:
-                              TextStyle(color: Colors.white38, fontSize: 10)),
-                    ]),
-                  ]),
-                ),
-
-              const SizedBox(height: 32),
-            ],
-          ),
-          ),
-        ),
       ),
     );
   }
-}
 
-// ── Match Tile ────────────────────────────────────────────────────────
-
-class _MatchTile extends StatelessWidget {
-  final String teamLetter, opponent, date, stat1, stat2, badge, points;
-  final Color badgeColor;
-
-  const _MatchTile({
-    required this.teamLetter,
-    required this.opponent,
-    required this.date,
-    required this.stat1,
-    required this.stat2,
-    required this.badge,
-    required this.points,
-    required this.badgeColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  // ── Qo Score tier card ──
+  Widget _scoreCard(
+      ({String name, Color color, int floor, int? ceil, String? next}) tier) {
+    final delta = _weekDelta;
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F0F2A),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white10),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [tier.color.withOpacity(0.22), const Color(0xFF101024)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: tier.color.withOpacity(0.35)),
       ),
       child: Row(children: [
-        Container(
-          width: 36, height: 36,
-          decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.2),
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.primary.withOpacity(0.4)),
-          ),
-          child: Center(child: Text(teamLetter, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16))),
-        ),
-        const SizedBox(width: 10),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(opponent, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
-              Text(date, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-              const SizedBox(height: 4),
-              Row(children: [
-                if (stat1.isNotEmpty) ...[
-                  Text(stat1, style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                  const SizedBox(width: 8),
-                ],
-                Text(stat2, style: const TextStyle(color: Colors.white54, fontSize: 11)),
-              ]),
-              const SizedBox(height: 4),
-              Row(children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: badgeColor.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                  child: Text(badge, style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.w600)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Qo Score',
+                style: TextStyle(color: Colors.white60, fontSize: 13)),
+            const SizedBox(height: 2),
+            Text('$_qoScore',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 44,
+                    fontWeight: FontWeight.w800,
+                    height: 1.05)),
+            Text(tier.name,
+                style: TextStyle(
+                    color: tier.color,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800)),
+            if (_ranking != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                    'Rank #${_ranking!['position']} of ${_ranking!['totalPlayers']}',
+                    style: const TextStyle(
+                        color: Colors.white54, fontSize: 12)),
+              ),
+            if (delta != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  '${delta >= 0 ? '↑ +' : '↓ '}$delta points this month',
+                  style: TextStyle(
+                      color:
+                          delta >= 0 ? tier.color : Colors.redAccent,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600),
                 ),
-              ]),
-            ],
+              ),
+          ]),
+        ),
+        Icon(Icons.shield_rounded, size: 76, color: tier.color),
+      ]),
+    );
+  }
+
+  // ── Card Progress toward the next tier ──
+  Widget _cardProgress(
+      ({String name, Color color, int floor, int? ceil, String? next}) tier) {
+    final maxed = tier.ceil == null;
+    final progress = maxed
+        ? 1.0
+        : ((_qoScore - tier.floor) / (tier.ceil! - tier.floor))
+            .clamp(0.0, 1.0);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14142B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Card Progress',
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w700)),
+        const SizedBox(height: 12),
+        Row(children: [
+          Icon(Icons.bolt_rounded, size: 16, color: tier.color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(tier.name,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600)),
+          ),
+          Text(
+            maxed ? '$_qoScore' : '$_qoScore / ${tier.ceil}',
+            style: TextStyle(
+                color: tier.color,
+                fontSize: 13,
+                fontWeight: FontWeight.w700),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 7,
+            backgroundColor: Colors.white10,
+            color: tier.color,
           ),
         ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(points, style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 16)),
-            const Text('Qo Points', style: TextStyle(color: Colors.white38, fontSize: 10)),
-            const SizedBox(height: 4),
-            const Icon(Icons.chevron_right, color: Colors.white24, size: 18),
-          ],
+        const SizedBox(height: 8),
+        Text(
+          maxed
+              ? 'You hold the highest card. Keep it up! 🏆'
+              : '${tier.ceil! - _qoScore} points to ${tier.next}',
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
       ]),
     );
   }
+
+  // ── Qo Journey chart ──
+  Widget _qoJourney() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14142B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: const [
+          Expanded(
+            child: Text('Qo Journey',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700)),
+          ),
+          Text('This Season',
+              style: TextStyle(color: Colors.white54, fontSize: 12)),
+          Icon(Icons.keyboard_arrow_down,
+              color: Colors.white54, size: 16),
+        ]),
+        const SizedBox(height: 14),
+        if (_journey.length < 2)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text(
+                'Play matches to start building\nyour Qo journey.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white38, fontSize: 12.5),
+              ),
+            ),
+          )
+        else
+          SizedBox(
+            height: 170,
+            child: CustomPaint(
+              size: const Size(double.infinity, 170),
+              painter: _JourneyPainter(
+                labels: _journey
+                    .map((j) => j['label'] as String? ?? '')
+                    .toList(),
+                values: _journey
+                    .map((j) => ((j['qoScore'] as num?) ?? 0).toDouble())
+                    .toList(),
+                color: _tier.color,
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  // ── Recent Matches ──
+  Widget _recentMatches() {
+    final list =
+        _showAllMatches ? _matches : _matches.take(3).toList();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14142B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Expanded(
+            child: Text('Recent Matches',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700)),
+          ),
+          if (_matches.length > 3)
+            GestureDetector(
+              onTap: () =>
+                  setState(() => _showAllMatches = !_showAllMatches),
+              child: Text(_showAllMatches ? 'Show Less' : 'View All',
+                  style: const TextStyle(
+                      color: AppColors.primaryLight,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600)),
+            ),
+        ]),
+        const SizedBox(height: 12),
+        if (_matches.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Text('No completed matches yet.',
+                style: TextStyle(color: Colors.white38, fontSize: 12.5)),
+          )
+        else
+          for (var i = 0; i < list.length; i++) ...[
+            _matchRow(list[i]),
+            if (i != list.length - 1)
+              const Divider(color: Colors.white10, height: 22),
+          ],
+      ]),
+    );
+  }
+
+  Widget _matchRow(Map<String, dynamic> m) {
+    final teamName = (m['teamName'] as String? ?? '').toLowerCase();
+    final summary = (m['resultSummary'] as String? ?? '');
+    final won = teamName.isNotEmpty &&
+        summary.toLowerCase().contains('won') &&
+        summary.toLowerCase().contains(teamName);
+    final lost = summary.toLowerCase().contains('won') && !won;
+    final dt =
+        DateTime.tryParse(m['playedAt'] as String? ?? '')?.toLocal();
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    final dateStr =
+        dt == null ? '' : '${dt.day} ${months[dt.month - 1]} ${dt.year}';
+
+    // {"runs": 78, "wickets": 1} -> "78 Runs", "1 Wicket"
+    final stats = (m['stats'] as Map<String, dynamic>? ?? const {})
+        .entries
+        .where((e) => e.value is num && (e.value as num) > 0)
+        .map((e) {
+      final n = (e.value as num).toInt();
+      var label = e.key[0].toUpperCase() + e.key.substring(1);
+      if (n == 1 && label.endsWith('s')) {
+        label = label.substring(0, label.length - 1);
+      }
+      return '$n $label';
+    }).toList();
+
+    final qoPoints = (m['qoPoints'] as num?)?.toInt() ?? 0;
+    final badgeColor = won
+        ? const Color(0xFF00C853)
+        : lost
+            ? Colors.redAccent
+            : Colors.white38;
+
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: badgeColor.withOpacity(0.15),
+          border: Border.all(color: badgeColor.withOpacity(0.5)),
+        ),
+        child: Center(
+          child: Text(won ? 'W' : (lost ? 'L' : '•'),
+              style: TextStyle(
+                  color: badgeColor,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13)),
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(m['opponent'] as String? ?? '',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700)),
+          Text(dateStr,
+              style: const TextStyle(color: Colors.white38, fontSize: 11)),
+          if (stats.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text(stats.join(' • '),
+                  style: const TextStyle(
+                      color: Colors.white70, fontSize: 12)),
+            ),
+          if (won)
+            Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00C853).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text('Won Match',
+                    style: TextStyle(
+                        color: Color(0xFF00C853),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700)),
+              ),
+            ),
+        ]),
+      ),
+      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text('${qoPoints >= 0 ? '+' : ''}$qoPoints',
+            style: TextStyle(
+                color: qoPoints >= 0
+                    ? const Color(0xFF00C853)
+                    : Colors.redAccent,
+                fontSize: 15,
+                fontWeight: FontWeight.w800)),
+        const Text('Qo Points',
+            style: TextStyle(color: Colors.white38, fontSize: 10.5)),
+      ]),
+      const SizedBox(width: 4),
+      const Icon(Icons.chevron_right, color: Colors.white24, size: 18),
+    ]);
+  }
+
+  // ── Ranking card ──
+  Widget _rankingCard() {
+    final r = _ranking;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14142B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: r == null
+          ? const Text(
+              'Join a league to get ranked against other players.',
+              style: TextStyle(color: Colors.white54, fontSize: 12.5),
+            )
+          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Ranking',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
+              Row(children: [
+                Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('#${r['position']}',
+                          style: TextStyle(
+                              color: _tier.color,
+                              fontSize: 34,
+                              fontWeight: FontWeight.w800,
+                              height: 1)),
+                      Text(_sportName ?? 'Your leagues',
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 12)),
+                    ]),
+                const SizedBox(width: 18),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00C853).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'Top ${(((r['position'] as num) / (r['totalPlayers'] as num)) * 100).clamp(1, 100).round()}%',
+                    style: const TextStyle(
+                        color: Color(0xFF00C853),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ),
+                const Spacer(),
+                Column(children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: const Icon(Icons.people_outline,
+                        color: Colors.white70, size: 20),
+                  ),
+                  const SizedBox(height: 4),
+                  Text('Out of ${r['totalPlayers']}\nplayers',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          color: Colors.white54, fontSize: 10.5)),
+                ]),
+              ]),
+            ]),
+    );
+  }
 }
 
-// ── Graph Painter ─────────────────────────────────────────────────────
-
-class _PerformanceGraphPainter extends CustomPainter {
+// ── Journey line chart painter ────────────────────────────────────────
+class _JourneyPainter extends CustomPainter {
+  final List<String> labels;
   final List<double> values;
-  final String lastValueLabel;
-  final String lastDateLabel;
-  _PerformanceGraphPainter({
-    required this.values,
-    this.lastValueLabel = '',
-    this.lastDateLabel = '',
-  });
+  final Color color;
+  const _JourneyPainter(
+      {required this.labels, required this.values, required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Normalize raw Qo scores into 0..1 painter space (inverted: 0 = top).
-    final minV = values.reduce((a, b) => a < b ? a : b);
+    const leftPad = 34.0, bottomPad = 22.0, topPad = 10.0;
+    final chartW = size.width - leftPad;
+    final chartH = size.height - bottomPad - topPad;
+
     final maxV = values.reduce((a, b) => a > b ? a : b);
-    final range = (maxV - minV) == 0 ? 1.0 : (maxV - minV);
-    final points = values
-        .map((v) => 0.9 - 0.8 * ((v - minV) / range))
-        .toList();
+    final niceMax = ((maxV / 100).ceil() * 100).clamp(100, 100000).toDouble();
 
-    final gridPaint = Paint()..color = Colors.white10..strokeWidth = 0.5;
-    for (int i = 0; i < 4; i++) {
-      final y = size.height * (1 - i / 3);
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    final grid = Paint()
+      ..color = Colors.white.withOpacity(0.06)
+      ..strokeWidth = 1;
+    final textStyle = const TextStyle(color: Colors.white38, fontSize: 9.5);
+
+    // horizontal gridlines + y labels
+    for (var i = 0; i <= 3; i++) {
+      final v = niceMax * i / 3;
+      final y = topPad + chartH - (v / niceMax) * chartH;
+      canvas.drawLine(
+          Offset(leftPad, y), Offset(size.width, y), grid);
+      final tp = TextPainter(
+          text: TextSpan(text: v.round().toString(), style: textStyle),
+          textDirection: TextDirection.ltr)
+        ..layout();
+      tp.paint(canvas, Offset(leftPad - tp.width - 6, y - tp.height / 2));
     }
 
-    final fillPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [AppColors.primary.withOpacity(0.3), AppColors.primary.withOpacity(0.0)],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..style = PaintingStyle.fill;
+    Offset at(int i) => Offset(
+          leftPad +
+              (values.length == 1
+                  ? chartW / 2
+                  : i * chartW / (values.length - 1)),
+          topPad + chartH - (values[i] / niceMax) * chartH,
+        );
 
-    final linePaint = Paint()
-      ..color = AppColors.primary
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
-
-    final path = Path();
-    final fillPath = Path();
-    final xOffset = 20.0;
-    final usableWidth = size.width - xOffset;
-
-    for (int i = 0; i < points.length; i++) {
-      final x = xOffset + i * usableWidth / (points.length - 1);
-      final y = points[i] * size.height;
-      if (i == 0) {
-        path.moveTo(x, y);
-        fillPath.moveTo(x, size.height);
-        fillPath.lineTo(x, y);
-      } else {
-        final prevX = xOffset + (i - 1) * usableWidth / (points.length - 1);
-        final prevY = points[i - 1] * size.height;
-        final cpX = (prevX + x) / 2;
-        path.cubicTo(cpX, prevY, cpX, y, x, y);
-        fillPath.cubicTo(cpX, prevY, cpX, y, x, y);
-      }
+    // area fill
+    final area = Path()..moveTo(at(0).dx, topPad + chartH);
+    for (var i = 0; i < values.length; i++) {
+      area.lineTo(at(i).dx, at(i).dy);
     }
+    area.lineTo(at(values.length - 1).dx, topPad + chartH);
+    area.close();
+    canvas.drawPath(
+        area,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [color.withOpacity(0.22), color.withOpacity(0.0)],
+          ).createShader(
+              Rect.fromLTWH(0, topPad, size.width, chartH)));
 
-    fillPath.lineTo(size.width, size.height);
-    fillPath.close();
-    canvas.drawPath(fillPath, fillPaint);
-    canvas.drawPath(path, linePaint);
-
-    for (int i = 0; i < points.length; i++) {
-      final x = xOffset + i * usableWidth / (points.length - 1);
-      final y = points[i] * size.height;
-      canvas.drawCircle(Offset(x, y), 5, Paint()..color = AppColors.primary..style = PaintingStyle.fill);
-      canvas.drawCircle(Offset(x, y), 5, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.5);
-      if (i == points.length - 1 && lastValueLabel.isNotEmpty) {
-        final tp = TextPainter(
-          text: TextSpan(children: [
-            TextSpan(
-                text: '$lastValueLabel\n',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700)),
-            TextSpan(
-                text: lastDateLabel,
-                style:
-                    const TextStyle(color: Colors.white38, fontSize: 9)),
-          ]),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        tp.paint(canvas, Offset(x - 20, y - 36));
-      }
+    // line
+    final line = Paint()
+      ..color = color
+      ..strokeWidth = 2.2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final path = Path()..moveTo(at(0).dx, at(0).dy);
+    for (var i = 1; i < values.length; i++) {
+      path.lineTo(at(i).dx, at(i).dy);
     }
+    canvas.drawPath(path, line);
+
+    // dots + x labels
+    final dot = Paint()..color = color;
+    for (var i = 0; i < values.length; i++) {
+      final p = at(i);
+      canvas.drawCircle(p, i == values.length - 1 ? 4 : 2.6, dot);
+      final tp = TextPainter(
+          text: TextSpan(text: labels[i], style: textStyle),
+          textDirection: TextDirection.ltr)
+        ..layout();
+      tp.paint(
+          canvas,
+          Offset(
+              (p.dx - tp.width / 2)
+                  .clamp(leftPad, size.width - tp.width),
+              size.height - tp.height));
+    }
+    // highlight bubble for the latest value
+    final last = at(values.length - 1);
+    final label = values.last.round().toString();
+    final tp = TextPainter(
+        text: TextSpan(
+            text: label,
+            style: TextStyle(
+                color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+        textDirection: TextDirection.ltr)
+      ..layout();
+    tp.paint(
+        canvas,
+        Offset((last.dx - tp.width - 8).clamp(leftPad, size.width),
+            (last.dy - tp.height - 6).clamp(0, size.height)));
   }
 
   @override
-  bool shouldRepaint(covariant _PerformanceGraphPainter oldDelegate) =>
-      oldDelegate.values != values;
-}
-
-// ── All Recent Matches (View All) ─────────────────────────────────────
-
-class _AllRecentMatchesScreen extends StatelessWidget {
-  final List<Map<String, dynamic>> matches;
-  const _AllRecentMatchesScreen({required this.matches});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A0A1A),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Row(children: [
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: const Icon(Icons.arrow_back_ios,
-                      color: Colors.white, size: 20),
-                ),
-                const SizedBox(width: 16),
-                const Text('All Matches',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800)),
-              ]),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: matches.isEmpty
-                  ? const Center(
-                      child: Text('No matches played yet',
-                          style: TextStyle(
-                              color: Colors.white54, fontSize: 14)))
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                      itemCount: matches.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, i) {
-                        final r = matches[i];
-                        final stats = _PerformanceScreenState._statStrings(
-                            r['stats'] as Map<String, dynamic>?);
-                        final opponent = r['opponent'] as String? ?? 'Match';
-                        final qp = (r['qoPoints'] as num?)?.toInt() ?? 0;
-                        return _MatchTile(
-                          teamLetter: opponent.replaceFirst('vs ', '').isEmpty
-                              ? '?'
-                              : opponent.replaceFirst('vs ', '')[0],
-                          opponent: opponent,
-                          date: _PerformanceScreenState._fmtDate(
-                              r['playedAt'] as String?),
-                          stat1: stats.isNotEmpty ? stats[0] : '',
-                          stat2: stats.length > 1 ? stats[1] : '',
-                          badge: (r['resultSummary'] as String?)?.isNotEmpty ==
-                                  true
-                              ? r['resultSummary'] as String
-                              : 'Completed',
-                          points: qp >= 0 ? '+$qp' : '$qp',
-                          badgeColor: const Color(0xFF00C853),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  bool shouldRepaint(covariant _JourneyPainter old) =>
+      old.values != values || old.color != color;
 }

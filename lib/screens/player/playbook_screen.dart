@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import '../../theme/app_theme.dart';
 import '../../services/api_client.dart';
 import '../../services/sportyqo_api.dart';
 import '../shared/app_toast.dart';
+import '../shared/avatar_picker.dart';
+import '../shared/notifications_sheet.dart';
+import 'profile_screen.dart';
 
+/// Playbook (design p.7): the player's own highlight page. Profile block
+/// with Qo Score + rank, About, social stats, Playing / Certificates /
+/// Team / Trophies tabs and an "Add New" uploader. Data: GET /me,
+/// GET /players/:id/profile, /performance, /playbook, /teams/:id/roster.
 class PlaybookScreen extends StatefulWidget {
   const PlaybookScreen({super.key});
 
@@ -14,149 +22,571 @@ class PlaybookScreen extends StatefulWidget {
 }
 
 class _PlaybookScreenState extends State<PlaybookScreen> {
-  int _tabIndex = 0;
-
-  String? _meName;
-  String? _meSport;
-  String? _meAcademy;
-  String? _meLocation;
-  int? _meQoScore;
-  int? _meRank;
-
-  // Content comes from GET /playbook (items shared with the player's
-  // teams/leagues by their coach), bucketed by kind per tab.
-  final Map<String, List<Map<String, dynamic>>> _byKind = {
-    'VIDEO': [],
-    'DRILL': [],
-    'STRATEGY': [],
-    'NOTE': [],
-  };
   bool _loading = true;
+  int _tab = 0;
 
-  static const _monthsShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-  static ({String emoji, Color color}) _kindStyle(String kind) {
-    switch (kind) {
-      case 'VIDEO':
-        return (emoji: '🎬', color: const Color(0xFF1A2A3A));
-      case 'DRILL':
-        return (emoji: '🏃', color: const Color(0xFF1A3A2A));
-      case 'STRATEGY':
-        return (emoji: '🧠', color: const Color(0xFF2A1A2A));
-      default:
-        return (emoji: '📝', color: const Color(0xFF2A2A1A));
-    }
-  }
+  Map<String, dynamic>? _me;
+  int _followers = 0;
+  int _following = 0;
+  int _leagues = 0;
+  int _matches = 0;
+  Map<String, dynamic>? _ranking;
+  List<Map<String, dynamic>> _items = [];
+  List<Map<String, dynamic>> _roster = [];
+  String? _teamName;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _loadMe();
-  }
-
-  Future<void> _loadMe() async {
-    try {
-      final me = await SportyQoApi.me();
-      if (!mounted) return;
-      setState(() {
-        _meName = me['fullName'] as String?;
-        _meSport =
-            (me['sport'] as Map<String, dynamic>?)?['name'] as String?;
-        _meAcademy = me['schoolAcademy'] as String?;
-        _meLocation = me['location'] as String?;
-        _meQoScore = (me['qoScore'] as num?)?.toInt();
-      });
-    } catch (_) {}
-    try {
-      final perf = await SportyQoApi.playerPerformance();
-      if (!mounted) return;
-      final rank = perf['ranking'] as Map<String, dynamic>?;
-      setState(() {
-        _meRank = (rank?['position'] as num?)?.toInt();
-      });
-    } catch (_) {}
   }
 
   Future<void> _load() async {
     try {
-      final data = await SportyQoApi.playbook();
+      final results = await Future.wait([
+        SportyQoApi.me(),
+        SportyQoApi.playerProfile(),
+        SportyQoApi.playerPerformance(),
+        SportyQoApi.playbook(),
+        SportyQoApi.myLeagues(),
+        SportyQoApi.playerHome(),
+      ]);
       if (!mounted) return;
+      final me = results[0] as Map<String, dynamic>;
+      final profile = results[1] as Map<String, dynamic>;
+      final perf = results[2] as Map<String, dynamic>;
+      final items =
+          (results[3] as List<dynamic>).cast<Map<String, dynamic>>();
+      final leagues = results[4] as List<dynamic>;
+      final home = results[5] as Map<String, dynamic>;
+
+      final journey = (perf['qoJourney'] as List<dynamic>? ?? const [])
+          .cast<Map<String, dynamic>>();
       setState(() {
-        for (final k in _byKind.keys) {
-          _byKind[k] = [];
-        }
-        for (final raw in data.cast<Map<String, dynamic>>()) {
-          final kind = (raw['kind'] as String? ?? 'NOTE').toUpperCase();
-          final st = _kindStyle(kind);
-          final dt = DateTime.tryParse(raw['createdAt'] as String? ?? '')
-              ?.toLocal();
-          final tags = (raw['tags'] as List<dynamic>? ?? [])
-              .map((t) => '$t')
-              .toList();
-          (_byKind[kind] ?? _byKind['NOTE']!).add({
-            'id': raw['id'],
-            'isMine': raw['isMine'] == true,
-            'kind': kind,
-            'title': raw['title'] ?? '',
-            'subtitle': (raw['description'] as String?)?.isNotEmpty == true
-                ? raw['description'] as String
-                : tags.join(' • '),
-            'date': dt == null
-                ? ''
-                : '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}',
-            'emoji': st.emoji,
-            'color': st.color,
-            'duration': '',
-            'mediaUrl': raw['mediaUrl'],
-          });
-        }
+        _me = me;
+        _followers = (profile['followers'] as num?)?.toInt() ?? 0;
+        _following = (profile['following'] as num?)?.toInt() ?? 0;
+        _ranking = perf['ranking'] as Map<String, dynamic>?;
+        _items = items;
+        _leagues = leagues.length;
+        _matches = journey.fold<int>(
+            0, (sum, j) => sum + ((j['matchesPlayed'] as num?)?.toInt() ?? 0));
         _loading = false;
       });
+
+      // Squad for the Team tab (active team from the home payload).
+      final team = ((home['activeLeague'] as Map<String, dynamic>?)?['team'])
+          as Map<String, dynamic>?;
+      if (team != null) {
+        final r = await SportyQoApi.teamRoster(team['id'] as String)
+            as Map<String, dynamic>;
+        if (!mounted) return;
+        setState(() {
+          _teamName = (r['team'] as Map<String, dynamic>?)?['name'];
+          _roster = (r['roster'] as List<dynamic>? ?? const [])
+              .cast<Map<String, dynamic>>();
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  List<Map<String, dynamic>> get _currentContent {
-    switch (_tabIndex) {
-      case 0: return _byKind['VIDEO']!;
-      case 1: return _byKind['DRILL']!;
-      case 2: return _byKind['STRATEGY']!;
-      case 3: return _byKind['NOTE']!;
-      default: return _byKind['VIDEO']!;
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A1A),
+      body: SafeArea(
+        child: _loading
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.primary))
+            : RefreshIndicator(
+                color: AppColors.primary,
+                backgroundColor: const Color(0xFF16162E),
+                onRefresh: _load,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                  children: [
+                    _header(),
+                    const SizedBox(height: 16),
+                    _profileBlock(),
+                    const SizedBox(height: 14),
+                    _aboutCard(),
+                    const SizedBox(height: 14),
+                    _statsRow(),
+                    const SizedBox(height: 16),
+                    _tabs(),
+                    const SizedBox(height: 14),
+                    ..._tabContent(),
+                    const SizedBox(height: 16),
+                    _addNewCard(),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _header() => Row(children: [
+        const Expanded(
+          child: Text('Playbook',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800)),
+        ),
+        GestureDetector(
+          onTap: () => showNotificationsSheet(context),
+          child: const Icon(Icons.notifications_none_rounded,
+              color: Colors.white, size: 24),
+        ),
+        const SizedBox(width: 16),
+        GestureDetector(
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const ProfileScreen())),
+          child: const Icon(Icons.settings_outlined,
+              color: Colors.white, size: 22),
+        ),
+      ]);
+
+  // ── Profile block: avatar+camera, identity rows, Qo Score card ──
+  Widget _profileBlock() {
+    final me = _me ?? const {};
+    final name = me['fullName'] as String? ?? 'Player';
+    final sport = (me['sport'] as Map<String, dynamic>?)?['name'] as String?;
+    final dob = me['dob'] as String?;
+    final dobStr = () {
+      final d = DateTime.tryParse(dob ?? '');
+      if (d == null) return null;
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return '${d.day} ${months[d.month - 1]} ${d.year}';
+    }();
+
+    Widget infoRow(IconData icon, String text) => Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(children: [
+            Icon(icon, size: 13, color: Colors.white54),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(color: Colors.white70, fontSize: 12)),
+            ),
+          ]),
+        );
+
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Stack(children: [
+        AvatarCircle(
+          avatarUrl: me['avatarUrl'] as String?,
+          name: name,
+          size: 92,
+          borderColor: AppColors.primary,
+        ),
+        Positioned(
+          bottom: 2,
+          right: 2,
+          child: GestureDetector(
+            onTap: _changePhoto,
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1B1B38),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white24),
+              ),
+              child: const Icon(Icons.camera_alt_outlined,
+                  size: 14, color: Colors.white),
+            ),
+          ),
+        ),
+      ]),
+      const SizedBox(width: 14),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Flexible(
+              child: Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800)),
+            ),
+            if (me['isVerified'] == true) ...[
+              const SizedBox(width: 5),
+              const Icon(Icons.verified,
+                  color: AppColors.primaryLight, size: 15),
+            ],
+          ]),
+          if (sport != null)
+            Text(sport,
+                style: const TextStyle(
+                    color: Colors.white54, fontSize: 12.5)),
+          const SizedBox(height: 4),
+          if (dobStr != null) infoRow(Icons.calendar_today_outlined, dobStr),
+          if ((me['location'] as String?)?.isNotEmpty == true)
+            infoRow(Icons.location_on_outlined, me['location'] as String),
+          if ((me['schoolAcademy'] as String?)?.isNotEmpty == true)
+            infoRow(Icons.school_outlined, me['schoolAcademy'] as String),
+        ]),
+      ),
+      const SizedBox(width: 8),
+      // Qo Score mini-card with rank
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.primary.withOpacity(0.5)),
+          color: AppColors.primary.withOpacity(0.08),
+        ),
+        child: Column(children: [
+          const Text('Qo Score',
+              style: TextStyle(
+                  color: AppColors.primaryLight, fontSize: 9.5)),
+          Text('${(me['qoScore'] as num?)?.toInt() ?? 0}',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800)),
+          if (_ranking != null) ...[
+            const SizedBox(height: 2),
+            const Text('Rank',
+                style: TextStyle(color: Colors.white38, fontSize: 9)),
+            Text('#${_ranking!['position']}',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700)),
+            Text('of ${_ranking!['totalPlayers']}',
+                style:
+                    const TextStyle(color: Colors.white38, fontSize: 8.5)),
+          ],
+        ]),
+      ),
+    ]);
+  }
+
+  Widget _aboutCard() {
+    final bio = (_me?['bio'] as String?) ?? '';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14142B),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('About',
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        Text(
+          bio.isEmpty
+              ? 'No bio yet — add one from your Profile.'
+              : bio,
+          style: TextStyle(
+              color: bio.isEmpty ? Colors.white38 : Colors.white70,
+              fontSize: 12.5,
+              height: 1.5),
+        ),
+      ]),
+    );
+  }
+
+  Widget _statsRow() {
+    Widget stat(String value, String label) => Expanded(
+          child: Column(children: [
+            Text(value,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800)),
+            Text(label,
+                style:
+                    const TextStyle(color: Colors.white38, fontSize: 11)),
+          ]),
+        );
+    return Row(children: [
+      stat('$_followers', 'Followers'),
+      stat('$_following', 'Following'),
+      stat('$_leagues', 'Leagues'),
+      stat('$_matches', 'Matches'),
+      ElevatedButton(
+        onPressed: () {
+          final code = _me?['playerId'] as String?;
+          if (code == null) return;
+          Clipboard.setData(ClipboardData(
+              text:
+                  'Check out my SportyQo profile! Player ID: $code'));
+          AppToast.success(context, 'Profile link copied! 📋');
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          padding:
+              const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+        ),
+        child: const Text('Share',
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700)),
+      ),
+    ]);
+  }
+
+  // ── Tabs ──
+  static const _tabDefs = [
+    (icon: Icons.sports_cricket_outlined, label: 'Playing'),
+    (icon: Icons.workspace_premium_outlined, label: 'Certificates'),
+    (icon: Icons.groups_outlined, label: 'Team'),
+    (icon: Icons.emoji_events_outlined, label: 'Trophies'),
+  ];
+
+  Widget _tabs() => Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: const Color(0xFF14142B),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          children: [
+            for (var i = 0; i < _tabDefs.length; i++)
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _tab = i),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    decoration: BoxDecoration(
+                      color: _tab == i
+                          ? AppColors.primary.withOpacity(0.15)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: Column(children: [
+                      Icon(_tabDefs[i].icon,
+                          size: 17,
+                          color: _tab == i
+                              ? AppColors.primaryLight
+                              : Colors.white54),
+                      const SizedBox(height: 3),
+                      Text(_tabDefs[i].label,
+                          style: TextStyle(
+                              color: _tab == i
+                                  ? AppColors.primaryLight
+                                  : Colors.white54,
+                              fontSize: 10.5,
+                              fontWeight: _tab == i
+                                  ? FontWeight.w700
+                                  : FontWeight.w500)),
+                    ]),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+
+  List<Widget> _tabContent() {
+    switch (_tab) {
+      case 0:
+        return _playingGrid();
+      case 1:
+        return [
+          _emptyTab('📜',
+              'No certificates yet.\nCertificates you earn will appear here.'),
+        ];
+      case 2:
+        return _teamTab();
+      default:
+        return [
+          _emptyTab('🏆',
+              'No trophies yet.\nWin matches and tournaments to collect them.'),
+        ];
     }
   }
 
-  /// Long-press on one of your own uploads → confirm → DELETE /playbook/:id.
+  Widget _emptyTab(String emoji, String text) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 34),
+        decoration: BoxDecoration(
+          color: const Color(0xFF14142B),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Column(children: [
+          Text(emoji, style: const TextStyle(fontSize: 34)),
+          const SizedBox(height: 8),
+          Text(text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Colors.white38, fontSize: 12.5, height: 1.5)),
+        ]),
+      );
+
+  // ── Playing: media grid ──
+  List<Widget> _playingGrid() {
+    final media =
+        _items.where((i) => (i['mediaUrl'] as String?) != null).toList();
+    if (media.isEmpty) {
+      return [
+        _emptyTab('🎬',
+            'No highlights yet.\nUpload your match videos and photos below.'),
+      ];
+    }
+    return [
+      GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.86,
+        ),
+        itemCount: media.length,
+        itemBuilder: (_, i) => _mediaCard(media[i]),
+      ),
+    ];
+  }
+
+  Widget _mediaCard(Map<String, dynamic> item) {
+    final isVideo = (item['kind'] as String?) == 'VIDEO';
+    final url = ApiClient.resolveMediaUrl(item['mediaUrl'] as String?);
+    final dt =
+        DateTime.tryParse(item['createdAt'] as String? ?? '')?.toLocal();
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    final dateStr =
+        dt == null ? '' : '${dt.day} ${months[dt.month - 1]} ${dt.year}';
+    final mine = item['isMine'] == true;
+
+    return GestureDetector(
+      onTap: () => _openMedia(item, isVideo, url),
+      onLongPress: mine ? () => _confirmDelete(item) : null,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white10),
+          color: const Color(0xFF16162E),
+        ),
+        child: Stack(fit: StackFit.expand, children: [
+          if (!isVideo && url != null)
+            Image.network(url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox()),
+          if (isVideo)
+            const Center(
+                child: Icon(Icons.play_circle_outline,
+                    color: Colors.white70, size: 42)),
+          // bottom overlay with title / stat / date
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.85)
+                  ],
+                ),
+              ),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item['title'] as String? ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700)),
+                    Row(children: [
+                      Expanded(
+                        child: Text(
+                            item['description'] as String? ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 10.5)),
+                      ),
+                      Text(dateStr,
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 9.5)),
+                    ]),
+                  ]),
+            ),
+          ),
+          if (isVideo)
+            const Positioned(
+              top: 8,
+              left: 8,
+              child: Icon(Icons.play_arrow_rounded,
+                  color: Colors.white, size: 18),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  void _openMedia(Map<String, dynamic> item, bool isVideo, String? url) {
+    if (isVideo) {
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => _VideoPlayerScreen(item: item)));
+    } else if (url != null) {
+      showDialog(
+        context: context,
+        barrierColor: Colors.black87,
+        builder: (_) => GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: InteractiveViewer(
+            child: Center(child: Image.network(url)),
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _confirmDelete(Map<String, dynamic> item) async {
-    final id = item['id'] as String?;
-    if (id == null) return;
     final yes = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF111111),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete this upload?',
-            style: TextStyle(color: Colors.white, fontSize: 17)),
-        content: Text('"${item['title']}" will be removed permanently.',
-            style: const TextStyle(color: Colors.white60, fontSize: 13)),
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF14142B),
+        title: const Text('Delete this item?',
+            style: TextStyle(color: Colors.white, fontSize: 16)),
+        content: Text(item['title'] as String? ?? '',
+            style: const TextStyle(color: Colors.white54, fontSize: 13)),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child:
-                  const Text('Cancel', style: TextStyle(color: Colors.white38))),
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: Colors.white54))),
           TextButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
+              onPressed: () => Navigator.pop(context, true),
               child: const Text('Delete',
                   style: TextStyle(color: Colors.redAccent))),
         ],
       ),
     );
-    if (yes != true || !mounted) return;
+    if (yes != true) return;
     try {
-      await SportyQoApi.deletePlaybookItem(id);
+      await SportyQoApi.deletePlaybookItem(item['id'] as String);
       await _load();
       if (!mounted) return;
       AppToast.success(context, 'Deleted');
@@ -166,514 +596,364 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
     }
   }
 
-  /// Picks a photo or video, asks for a title, uploads it to POST /playbook
-  /// with live progress, then refreshes the grid so the new item appears.
-  Future<void> _pickAndUpload(BuildContext sheetContext,
-      {required ImageSource source, required bool video}) async {
-    Navigator.pop(sheetContext); // close the picker sheet first
-
-    final picker = ImagePicker();
-    XFile? file;
-    try {
-      file = video
-          ? await picker.pickVideo(
-              source: source, maxDuration: const Duration(minutes: 5))
-          : await picker.pickImage(
-              source: source, maxWidth: 1920, imageQuality: 88);
-    } catch (_) {
-      if (!mounted) return;
-      AppToast.error(context,
-          'Could not open the camera/gallery. Check the app permissions in Settings.');
-      return;
+  // ── Team tab ──
+  List<Widget> _teamTab() {
+    if (_roster.isEmpty) {
+      return [
+        _emptyTab('👥',
+            'You are not on a team yet.\nJoin a league and pick a team to see your squad.'),
+      ];
     }
-    if (file == null || !mounted) return; // user cancelled
+    return [
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF14142B),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (_teamName != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(_teamName!,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700)),
+            ),
+          for (var i = 0; i < _roster.length; i++) ...[
+            _rosterRow(_roster[i]),
+            if (i != _roster.length - 1)
+              const Divider(color: Colors.white10, height: 18),
+          ],
+        ]),
+      ),
+    ];
+  }
 
-    // Suggest a title from the file name; the user can change it.
-    final rawName = file.name.split('.').first.replaceAll(RegExp(r'[_-]+'), ' ').trim();
-    final titleCtrl = TextEditingController(
-        text: rawName.length >= 3 ? rawName : (video ? 'My video' : 'My photo'));
+  Widget _rosterRow(Map<String, dynamic> r) => Row(children: [
+        AvatarCircle(
+          avatarUrl: r['avatarUrl'] as String?,
+          name: r['fullName'] as String? ?? 'P',
+          size: 36,
+          borderWidth: 1.5,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(
+                child: Text(r['fullName'] as String? ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+              ),
+              if (r['isCaptain'] == true)
+                const Padding(
+                  padding: EdgeInsets.only(left: 5),
+                  child: Text('©',
+                      style: TextStyle(
+                          color: AppColors.primaryLight, fontSize: 12)),
+                ),
+            ]),
+            Text(
+              [
+                if ((r['position'] as String?)?.isNotEmpty == true)
+                  r['position'] as String,
+                if (r['jerseyNo'] != null) '#${r['jerseyNo']}',
+              ].join(' • '),
+              style: const TextStyle(color: Colors.white38, fontSize: 11),
+            ),
+          ]),
+        ),
+        Text('${(r['qoScore'] as num?)?.toInt() ?? 0} Qo',
+            style: const TextStyle(
+                color: AppColors.primaryLight,
+                fontSize: 12,
+                fontWeight: FontWeight.w700)),
+      ]);
+
+  // ── Add New (design bottom card) ──
+  Widget _addNewCard() => GestureDetector(
+        onTap: _showUploadSheet,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF14142B),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Row(children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white24),
+              ),
+              child: const Icon(Icons.add, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text('Add New',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700)),
+                    Text('Add match videos, highlights and performances',
+                        style: TextStyle(
+                            color: Colors.white38, fontSize: 11.5)),
+                  ]),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white38),
+          ]),
+        ),
+      );
+
+  Future<void> _changePhoto() async {
+    final url = await pickAndUploadAvatar(context, ImageSource.gallery,
+        accent: AppColors.primary);
+    if (url != null && mounted) {
+      setState(() => _me = {...?_me, 'avatarUrl': url});
+    }
+  }
+
+  // Upload sheet: pick photo/video, title + description, live progress.
+  void _showUploadSheet() {
+    final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
-    final progress = ValueNotifier<double>(0);
+    XFile? media;
+    bool isVideo = false;
     bool uploading = false;
+    final progress = ValueNotifier<double>(0);
 
-    await showModalBottomSheet(
+    showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: false,
-      backgroundColor: const Color(0xFF111111),
+      backgroundColor: const Color(0xFF14142B),
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(24, 24, 24,
-              24 + MediaQuery.of(dialogContext).viewInsets.bottom),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Icon(video ? Icons.videocam : Icons.photo,
-                    color: AppColors.primary, size: 22),
-                const SizedBox(width: 10),
-                Text(video ? 'Upload video' : 'Upload photo',
-                    style: const TextStyle(
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSheet) {
+          Future<void> pick(bool video, ImageSource source) async {
+            try {
+              final picker = ImagePicker();
+              final f = video
+                  ? await picker.pickVideo(
+                      source: source,
+                      maxDuration: const Duration(minutes: 3))
+                  : await picker.pickImage(
+                      source: source, maxWidth: 1920, imageQuality: 88);
+              if (f != null) {
+                setSheet(() {
+                  media = f;
+                  isVideo = video;
+                });
+              }
+            } catch (_) {
+              AppToast.error(sheetCtx,
+                  'Could not open the camera/gallery. Check the app permissions in Settings.');
+            }
+          }
+
+          Widget pickBtn(IconData icon, String label, VoidCallback onTap) =>
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: uploading ? null : onTap,
+                  icon: Icon(icon, size: 16, color: AppColors.primaryLight),
+                  label: Text(label,
+                      style: const TextStyle(
+                          color: AppColors.primaryLight, fontSize: 11.5)),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                        color: AppColors.primary.withOpacity(0.5)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                  ),
+                ),
+              );
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(24, 24, 24,
+                24 + MediaQuery.of(sheetCtx).viewInsets.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Add to Playbook',
+                    style: TextStyle(
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.w800)),
-              ]),
-              const SizedBox(height: 16),
-              TextField(
-                controller: titleCtrl,
-                enabled: !uploading,
-                maxLength: 140,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Title (min 3 characters)',
-                  counterText: '',
-                  hintStyle: const TextStyle(color: Colors.white38),
-                  filled: true,
-                  fillColor: const Color(0xFF1A1A1A),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: titleCtrl,
+                  enabled: !uploading,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _inputDeco('Title (e.g. Century vs DSO Academy)'),
                 ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: descCtrl,
-                enabled: !uploading,
-                maxLines: 2,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Description (optional)',
-                  hintStyle: const TextStyle(color: Colors.white38),
-                  filled: true,
-                  fillColor: const Color(0xFF1A1A1A),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (uploading) ...[
-                ValueListenableBuilder<double>(
-                  valueListenable: progress,
-                  builder: (_, v, __) => Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(
-                          value: v > 0 ? v : null,
-                          minHeight: 8,
-                          backgroundColor: Colors.white10,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                          v >= 1
-                              ? 'Processing…'
-                              : 'Uploading… ${(v * 100).toStringAsFixed(0)}%',
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 12)),
-                    ],
-                  ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: descCtrl,
+                  enabled: !uploading,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _inputDeco('Highlight (e.g. 125 Runs) — optional'),
                 ),
                 const SizedBox(height: 12),
-              ],
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: uploading
-                      ? null
-                      : () async {
-                          final title = titleCtrl.text.trim();
-                          if (title.length < 3) {
-                            AppToast.error(dialogContext,
-                                'Give it a title (3+ characters)');
-                            return;
-                          }
-                          setSheetState(() => uploading = true);
-                          try {
-                            await SportyQoApi.uploadPlaybookMedia(
-                              filePath: file!.path,
-                              title: title,
-                              description: descCtrl.text.trim(),
-                              kind: video ? 'VIDEO' : null,
-                              onProgress: (v) => progress.value = v,
-                            );
-                            if (!dialogContext.mounted) return;
-                            Navigator.pop(dialogContext);
-                            await _load();
-                            if (!mounted) return;
-                            AppToast.success(context,
-                                video ? 'Video uploaded ✅' : 'Photo uploaded ✅');
-                          } on ApiException catch (e) {
-                            if (!dialogContext.mounted) return;
-                            setSheetState(() => uploading = false);
-                            AppToast.error(
-                                dialogContext,
-                                e.code == 'NETWORK'
-                                    ? 'Upload failed — check your connection and try again.'
-                                    : e.message);
-                          } catch (_) {
-                            if (!dialogContext.mounted) return;
-                            setSheetState(() => uploading = false);
-                            AppToast.error(dialogContext,
-                                'Upload failed — please try again.');
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14)),
-                  child: Text(uploading ? 'Uploading…' : 'Upload',
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w700)),
-                ),
-              ),
-              if (!uploading)
-                Center(
-                  child: TextButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Cancel',
-                          style: TextStyle(color: Colors.white38))),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-    progress.dispose();
-  }
-
-  void _showUploadDialog(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF111111),
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Add New Content',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 20),
-            Row(children: [
-              Expanded(
-                  child: _UploadOption(
-                      icon: Icons.camera_alt,
-                      label: 'Camera',
-                      color: AppColors.primary,
-                      onTap: () => _pickAndUpload(context,
-                          source: ImageSource.camera, video: false))),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: _UploadOption(
-                      icon: Icons.photo_library,
-                      label: 'Gallery',
-                      color: AppColors.primary,
-                      onTap: () => _pickAndUpload(context,
-                          source: ImageSource.gallery, video: false))),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: _UploadOption(
-                      icon: Icons.videocam,
-                      label: 'Video',
-                      color: AppColors.primary,
-                      onTap: () => _pickAndUpload(context,
-                          source: ImageSource.gallery, video: true))),
-            ]),
-            const SizedBox(height: 8),
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel', style: TextStyle(color: Colors.white38))),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 16),
-
-              // ── My Profile Card (live from /me + /performance) ──
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF111111),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white10),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border:
-                              Border.all(color: AppColors.primary, width: 2),
-                          color: const Color(0xFF1A1A1A),
-                        ),
-                        child: const Center(
-                            child:
-                                Text('👤', style: TextStyle(fontSize: 36))),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(_meName ?? 'Player',
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800)),
-                            const SizedBox(height: 4),
-                            if (_meSport != null)
-                              Text(_meSport!,
-                                  style: const TextStyle(
-                                      color: AppColors.primary,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 6),
-                            if (_meAcademy != null &&
-                                _meAcademy!.isNotEmpty)
-                              Row(children: [
-                                const Icon(Icons.shield_outlined,
-                                    color: Colors.white38, size: 12),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(_meAcademy!,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                          color: Colors.white60,
-                                          fontSize: 11)),
-                                ),
-                              ]),
-                            if (_meLocation != null &&
-                                _meLocation!.isNotEmpty) ...[
-                              const SizedBox(height: 3),
-                              Row(children: [
-                                const Icon(Icons.location_on_outlined,
-                                    color: Colors.white38, size: 12),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(_meLocation!,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: 11)),
-                                ),
-                              ]),
-                            ],
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0A0A1A),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: AppColors.primary.withOpacity(0.4)),
-                        ),
-                        child: Column(children: [
-                          const Text('Qo Score',
-                              style: TextStyle(
-                                  color: AppColors.primary,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w600)),
-                          Text('${_meQoScore ?? '—'}',
-                              style: const TextStyle(
-                                  color: AppColors.primary,
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.1)),
-                          if (_meRank != null) ...[
-                            const Text('Rank',
-                                style: TextStyle(
-                                    color: Colors.white38, fontSize: 9)),
-                            Text('#$_meRank',
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800)),
-                          ],
-                        ]),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // ── Tabs ──
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(children: [
-                  _PlaybookTab(
-                      icon: Icons.play_circle_outline,
-                      label: 'Videos',
-                      isActive: _tabIndex == 0,
-                      onTap: () => setState(() => _tabIndex = 0)),
-                  _PlaybookTab(
-                      icon: Icons.directions_run,
-                      label: 'Drills',
-                      isActive: _tabIndex == 1,
-                      onTap: () => setState(() => _tabIndex = 1)),
-                  _PlaybookTab(
-                      icon: Icons.psychology_outlined,
-                      label: 'Strategy',
-                      isActive: _tabIndex == 2,
-                      onTap: () => setState(() => _tabIndex = 2)),
-                  _PlaybookTab(
-                      icon: Icons.sticky_note_2_outlined,
-                      label: 'Notes',
-                      isActive: _tabIndex == 3,
-                      onTap: () => setState(() => _tabIndex = 3)),
-                ]),
-              ),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Container(height: 1, color: Colors.white10),
-              ),
-
-              const SizedBox(height: 16),
-
-              // ── Content Grid ──
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _loading
-                    ? const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 60),
-                        child: Center(
-                            child: CircularProgressIndicator(
-                                color: AppColors.primary)),
-                      )
-                    : _currentContent.isEmpty
-                        ? const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 60),
-                            child: Center(
-                                child: Text(
-                                    'Nothing here yet — content shared by your coach will appear here',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                        color: Colors.white38,
-                                        fontSize: 13))),
-                          )
-                        : GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 0.85,
-                  ),
-                  itemCount: _currentContent.length,
-                  itemBuilder: (context, i) {
-                    final item = _currentContent[i];
-                    final isVideo =
-                        (item['kind'] as String? ?? '') == 'VIDEO';
-                    return GestureDetector(
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => isVideo
-                              ? _VideoPlayerScreen(item: item)
-                              : _ContentDetailScreen(item: item),
-                        ),
-                      ),
-                      onLongPress: item['isMine'] == true
-                          ? () => _confirmDelete(item)
-                          : null,
-                      child: _ContentCard(item: item),
-                    );
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // ── Add New ──
-              // Uploading playbook content is a coach capability; players
-              // only browse, so the upload card is hidden for them.
-              if (ApiClient.instance.role == 'COACH')
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: GestureDetector(
-                  onTap: () => _showUploadDialog(context),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
+                if (media == null)
+                  Row(children: [
+                    pickBtn(Icons.photo_outlined, 'Photo',
+                        () => pick(false, ImageSource.gallery)),
+                    const SizedBox(width: 8),
+                    pickBtn(Icons.camera_alt_outlined, 'Camera',
+                        () => pick(false, ImageSource.camera)),
+                    const SizedBox(width: 8),
+                    pickBtn(Icons.videocam_outlined, 'Video',
+                        () => pick(true, ImageSource.gallery)),
+                  ])
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF111111),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white10),
+                      color: const Color(0xFF1B1B38),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: AppColors.primary.withOpacity(0.4)),
                     ),
                     child: Row(children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: Colors.white10,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white12),
-                        ),
-                        child: const Icon(Icons.add, color: Colors.white, size: 22),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text('Add New',
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 14)),
-                            Text(
-                                'Add match videos, highlights and performances',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    color: Colors.white38, fontSize: 11)),
-                          ],
-                        ),
-                      ),
+                      Icon(isVideo ? Icons.videocam : Icons.photo,
+                          size: 16, color: AppColors.primaryLight),
                       const SizedBox(width: 8),
-                      const Icon(Icons.chevron_right, color: Colors.white38),
+                      Expanded(
+                        child: Text(media!.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 12)),
+                      ),
+                      if (!uploading)
+                        GestureDetector(
+                          onTap: () => setSheet(() => media = null),
+                          child: const Icon(Icons.close,
+                              size: 16, color: Colors.white38),
+                        ),
                     ]),
                   ),
+                if (uploading) ...[
+                  const SizedBox(height: 14),
+                  ValueListenableBuilder<double>(
+                    valueListenable: progress,
+                    builder: (_, v, __) => ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: v > 0 ? v : null,
+                        minHeight: 6,
+                        backgroundColor: Colors.white10,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: uploading
+                        ? null
+                        : () async {
+                            final title = titleCtrl.text.trim();
+                            if (title.length < 3) {
+                              AppToast.error(sheetCtx,
+                                  'Give it a title (3+ characters)');
+                              return;
+                            }
+                            if (media == null) {
+                              AppToast.error(sheetCtx,
+                                  'Attach a photo or video first');
+                              return;
+                            }
+                            setSheet(() => uploading = true);
+                            try {
+                              await SportyQoApi.uploadPlaybookMedia(
+                                filePath: media!.path,
+                                title: title,
+                                description: descCtrl.text.trim(),
+                                kind: isVideo ? 'VIDEO' : 'DRILL',
+                                onProgress: (v) => progress.value = v,
+                              );
+                              if (!sheetCtx.mounted) return;
+                              Navigator.pop(sheetCtx);
+                              await _load();
+                              if (!mounted) return;
+                              AppToast.success(
+                                  context,
+                                  isVideo
+                                      ? 'Video uploaded ✅'
+                                      : 'Photo uploaded ✅');
+                            } on ApiException catch (e) {
+                              if (!sheetCtx.mounted) return;
+                              setSheet(() => uploading = false);
+                              AppToast.error(
+                                  sheetCtx,
+                                  e.code == 'NETWORK'
+                                      ? 'Upload failed — check your connection and try again.'
+                                      : e.message);
+                            } catch (_) {
+                              if (!sheetCtx.mounted) return;
+                              setSheet(() => uploading = false);
+                              AppToast.error(sheetCtx,
+                                  'Upload failed — please try again.');
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text(uploading ? 'Uploading…' : 'Upload',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700)),
+                  ),
                 ),
-              ),
-
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
+                if (!uploading)
+                  Center(
+                    child: TextButton(
+                        onPressed: () => Navigator.pop(sheetCtx),
+                        child: const Text('Cancel',
+                            style: TextStyle(color: Colors.white38))),
+                  ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
+
+  InputDecoration _inputDeco(String hint) => InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+        filled: true,
+        fillColor: const Color(0xFF1B1B38),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none),
+      );
 }
 
-// ── Video Player Screen ───────────────────────────────────────────────
-
+// ── Video Player (unchanged, plays the item's real mediaUrl) ──────────
 class _VideoPlayerScreen extends StatefulWidget {
   final Map<String, dynamic> item;
   const _VideoPlayerScreen({required this.item});
