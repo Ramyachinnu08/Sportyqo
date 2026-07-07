@@ -741,6 +741,160 @@ class _CoachPerformanceScreenState extends State<CoachPerformanceScreen> {
   /// "Recommend Now": lists the coach's top players (by Qo score) with a
   /// real Send action — POST /players/:id/recommend records it and
   /// notifies the player. Rows flip to "Sent ✓" once recommended.
+
+  /// "Recommend Now": lists the coach's top players (by Qo score) with a
+  /// real Send action — POST /players/:id/recommend records it and
+  /// notifies the player. Rows flip to "Sent ✓" once recommended.
+  void _showRecommendNow(BuildContext context) {
+    final sending = <String>{};
+    final top = [..._players]
+      ..sort((a, b) =>
+          (b['qoScore'] as int).compareTo(a['qoScore'] as int));
+    final list = top.take(8).toList();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF111111),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Recommend Players',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              const Text(
+                  'Select players to recommend to clubs and leagues.',
+                  style: TextStyle(color: Colors.white54, fontSize: 13)),
+              const SizedBox(height: 20),
+              if (list.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text('No players to recommend yet.',
+                        style:
+                            TextStyle(color: Colors.white38, fontSize: 13)),
+                  ),
+                ),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: list.map((p) {
+                      final id = p['id'] as String?;
+                      final sent = p['recommended'] == true;
+                      final busy = id != null && sending.contains(id);
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A1A1A),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: Row(children: [
+                          Text(p['emoji'] as String,
+                              style: const TextStyle(fontSize: 24)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Text(p['name'] as String,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13)),
+                                Text("${p['role']} • ${p['sqid']}",
+                                    style: const TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: (id == null || sent || busy)
+                                ? null
+                                : () async {
+                                    setSheetState(() => sending.add(id));
+                                    try {
+                                      await SportyQoApi.recommendPlayer(id);
+                                      if (!sheetContext.mounted) return;
+                                      setSheetState(() {
+                                        sending.remove(id);
+                                        p['recommended'] = true;
+                                      });
+                                      AppToast.success(sheetContext,
+                                          "${p['name']} recommended to clubs! ✅");
+                                    } on ApiException catch (e) {
+                                      if (!sheetContext.mounted) return;
+                                      setSheetState(
+                                          () => sending.remove(id));
+                                      AppToast.error(
+                                          sheetContext, e.message);
+                                    } catch (_) {
+                                      if (!sheetContext.mounted) return;
+                                      setSheetState(
+                                          () => sending.remove(id));
+                                      AppToast.error(sheetContext,
+                                          'Could not send — try again.');
+                                    }
+                                  },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: sent
+                                    ? AppColors.primary.withOpacity(0.15)
+                                    : AppColors.primary,
+                                borderRadius: BorderRadius.circular(20),
+                                border: sent
+                                    ? Border.all(
+                                        color: AppColors.primary
+                                            .withOpacity(0.5))
+                                    : null,
+                              ),
+                              child: busy
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white))
+                                  : Text(sent ? 'Sent ✓' : 'Recommend',
+                                      style: TextStyle(
+                                          color: sent
+                                              ? AppColors.primary
+                                              : Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 11)),
+                            ),
+                          ),
+                        ]),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  child: const Text('Close',
+                      style: TextStyle(color: Colors.white38))),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _MiniStat extends StatelessWidget {
