@@ -58,8 +58,8 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
             BottomNavigationBarItem(
                 icon: Icon(Icons.home_rounded), label: 'Home'),
             BottomNavigationBarItem(
-                icon: Icon(Icons.chat_bubble_outline),
-                activeIcon: Icon(Icons.chat_bubble),
+                icon: Icon(Icons.people_outline),
+                activeIcon: Icon(Icons.people),
                 label: 'Dugout'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.menu_book_outlined),

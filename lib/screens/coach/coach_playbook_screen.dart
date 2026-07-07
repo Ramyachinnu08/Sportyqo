@@ -450,6 +450,37 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
         ]),
       );
 
+  /// Upload category derived from the item's tags — matches the tab names
+  /// (Training, Teams, Achievements, Events). Untagged uploads (and older
+  /// ones) count as Training.
+  String _categoryOf(Map<String, dynamic> item) {
+    final tags = (item['tags'] as List<dynamic>? ?? const [])
+        .map((t) => t.toString().toLowerCase())
+        .toSet();
+    for (final c in const ['teams', 'achievements', 'events']) {
+      if (tags.contains(c)) return c;
+    }
+    return 'training';
+  }
+
+  List<Map<String, dynamic>> _mediaFor(String category) => _items
+      .where((i) =>
+          (i['mediaUrl'] as String?) != null && _categoryOf(i) == category)
+      .toList();
+
+  Widget _mediaGrid(List<Map<String, dynamic>> media) => GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.86,
+        ),
+        itemCount: media.length,
+        itemBuilder: (_, i) => _mediaCard(media[i]),
+      );
+
   List<Widget> _tabContent() {
     switch (_tab) {
       case 0:
@@ -483,8 +514,7 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
 
   // ── Training tab: media grid ──
   List<Widget> _trainingGrid() {
-    final media =
-        _items.where((i) => (i['mediaUrl'] as String?) != null).toList();
+    final media = _mediaFor('training');
     if (media.isEmpty) {
       return [
         _emptyTab('🎬',
@@ -625,13 +655,19 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
 
   // ── Teams tab ──
   List<Widget> _teamsTab() {
-    if (_teams.isEmpty) {
+    final teamMedia = _mediaFor('teams');
+    if (_teams.isEmpty && teamMedia.isEmpty) {
       return [
         _emptyTab('👥',
             'No teams yet.\nCreate a league to set up your teams.'),
       ];
     }
+    if (_teams.isEmpty) return [_mediaGrid(teamMedia)];
     return [
+      if (teamMedia.isNotEmpty) ...[
+        _mediaGrid(teamMedia),
+        const SizedBox(height: 14),
+      ],
       Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -685,13 +721,19 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
 
   // ── Achievements tab: real certifications ──
   List<Widget> _achievementsTab() {
-    if (_certs.isEmpty) {
+    final achMedia = _mediaFor('achievements');
+    if (_certs.isEmpty && achMedia.isEmpty) {
       return [
         _emptyTab('🏅',
             'No certifications yet.\nGet certified from the Home tab to build player trust.'),
       ];
     }
+    if (_certs.isEmpty) return [_mediaGrid(achMedia)];
     return [
+      if (achMedia.isNotEmpty) ...[
+        _mediaGrid(achMedia),
+        const SizedBox(height: 14),
+      ],
       Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -753,14 +795,20 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
 
   // ── Events tab: upcoming matches ──
   List<Widget> _eventsTab() {
-    if (_events.isEmpty) {
+    final eventMedia = _mediaFor('events');
+    if (_events.isEmpty && eventMedia.isEmpty) {
       return [
         _emptyTab('📅',
             'No upcoming events.\nSchedule matches from your league dashboard.'),
       ];
     }
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    if (_events.isEmpty) return [_mediaGrid(eventMedia)];
     return [
+      if (eventMedia.isNotEmpty) ...[
+        _mediaGrid(eventMedia),
+        const SizedBox(height: 14),
+      ],
       Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -1015,6 +1063,7 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     String kind = 'DRILL';
+    String category = 'Training'; // Training | Teams | Achievements | Events
     XFile? media;
     bool isVideo = false;
     bool uploading = false;
@@ -1113,6 +1162,34 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
                         onSelected: uploading
                             ? null
                             : (_) => setSheetState(() => kind = k),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Which tab this upload shows under
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final c in const [
+                      'Training',
+                      'Teams',
+                      'Achievements',
+                      'Events'
+                    ])
+                      ChoiceChip(
+                        label: Text(c),
+                        selected: category == c,
+                        showCheckmark: false,
+                        selectedColor: AppColors.primary,
+                        backgroundColor: const Color(0xFF1A1A1A),
+                        labelStyle: TextStyle(
+                            color: category == c
+                                ? Colors.white
+                                : Colors.white54,
+                            fontSize: 12),
+                        onSelected: uploading
+                            ? null
+                            : (_) => setSheetState(() => category = c),
                       ),
                   ],
                 ),
@@ -1245,7 +1322,8 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
                                 await SportyQoApi.createPlaybookItem(
                                     title: title,
                                     description: descCtrl.text.trim(),
-                                    kind: kind);
+                                    kind: kind,
+                                    tags: [category.toLowerCase()]);
                                 await _load();
                                 if (!context.mounted) return;
                                 AppToast.success(
@@ -1268,6 +1346,7 @@ class _CoachPlaybookScreenState extends State<CoachPlaybookScreen> {
                                 title: title,
                                 description: descCtrl.text.trim(),
                                 kind: isVideo ? 'VIDEO' : kind,
+                                tags: [category.toLowerCase()],
                                 onProgress: (v) => progress.value = v,
                               );
                               if (!sheetContext.mounted) return;

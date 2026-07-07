@@ -19,6 +19,7 @@ class _CreateLeagueScreenState
   final _nameController = TextEditingController();
   String _selectedLocation = 'Bangalore, Karnataka';
   String _selectedGender = 'Men\'s';
+  String _selectedType = 'Gully'; // League Type: Gully | Professional
   int _teamsCount = 8;
   String? _selectedLeagueIcon;
 
@@ -95,6 +96,7 @@ class _CreateLeagueScreenState
         name: name,
         location: _selectedLocation,
         gender: _selectedGender,
+        leagueType: _selectedType,
         sportId: sportId,
         iconEmoji: _selectedLeagueIcon,
         teams: [
@@ -573,6 +575,43 @@ class _CreateLeagueScreenState
                               ),
                             ),
                           ),
+                        ]),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // League Type (e.g. cricket: Gully or Professional)
+                      _FormField(
+                        icon: Icons.sports_cricket_outlined,
+                        label: 'Type',
+                        child: Row(children: [
+                          for (final t in const ['Gully', 'Professional'])
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () =>
+                                    setState(() => _selectedType = t),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: _selectedType == t
+                                        ? const Color(0xFF1A6BFF)
+                                        : Colors.transparent,
+                                    borderRadius:
+                                        BorderRadius.circular(10),
+                                  ),
+                                  child: Center(
+                                    child: Text(t,
+                                        style: TextStyle(
+                                            color: _selectedType == t
+                                                ? Colors.white
+                                                : Colors.white54,
+                                            fontWeight:
+                                                FontWeight.w600)),
+                                  ),
+                                ),
+                              ),
+                            ),
                         ]),
                       ),
 

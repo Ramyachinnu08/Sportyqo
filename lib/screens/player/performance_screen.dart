@@ -61,9 +61,9 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
       return (name: 'Blue Card', color: const Color(0xFF1A6BFF), floor: 500, ceil: 750, next: 'Purple Card');
     }
     if (_qoScore >= 250) {
-      return (name: 'Silver Card', color: const Color(0xFF9BA8B7), floor: 250, ceil: 500, next: 'Blue Card');
+      return (name: 'Yellow Card', color: const Color(0xFFFFD600), floor: 250, ceil: 500, next: 'Blue Card');
     }
-    return (name: 'Bronze Card', color: const Color(0xFFCD7F32), floor: 0, ceil: 250, next: 'Silver Card');
+    return (name: 'Green Card', color: const Color(0xFF00C853), floor: 0, ceil: 250, next: 'Yellow Card');
   }
 
   int? get _weekDelta {

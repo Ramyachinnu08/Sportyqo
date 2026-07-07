@@ -21,8 +21,8 @@ class _QoScoreCardScreenState extends State<QoScoreCardScreen> {
   String get _cardName {
     if (_qoScore >= 750) return 'Purple Card';
     if (_qoScore >= 500) return 'Blue Card';
-    if (_qoScore >= 250) return 'Silver Card';
-    return 'Bronze Card';
+    if (_qoScore >= 250) return 'Yellow Card';
+    return 'Green Card';
   }
 
   String get _levelLabel {
@@ -229,11 +229,11 @@ class _QoScoreCardScreenState extends State<QoScoreCardScreen> {
                   children: [
                     const Text('Card Progress', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
                     const SizedBox(height: 16),
-                    _CardProgress(label: '🥉 Bronze Card', value: _qoScore.clamp(0, 250), max: 250, color: Colors.orange),
+                    _CardProgress(label: '🟢 Green Card', value: _qoScore.clamp(0, 250), max: 250, color: const Color(0xFF00C853)),
                     const SizedBox(height: 12),
-                    _CardProgress(label: '🥈 Silver Card', value: _qoScore.clamp(0, 500), max: 500, color: Colors.blueGrey),
+                    _CardProgress(label: '🟡 Yellow Card', value: _qoScore.clamp(0, 500), max: 500, color: const Color(0xFFFFD600)),
                     const SizedBox(height: 12),
-                    _CardProgress(label: '🔵 Blue Card', value: _qoScore.clamp(0, 750), max: 750, color: Colors.blueAccent),
+                    _CardProgress(label: '🔵 Blue Card', value: _qoScore.clamp(0, 750), max: 750, color: const Color(0xFF1A6BFF)),
                     const SizedBox(height: 12),
                     _CardProgress(label: '🟣 Purple Card', value: _qoScore.clamp(0, 1000), max: 1000, color: AppColors.primary),
                   ],

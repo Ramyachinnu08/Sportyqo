@@ -349,7 +349,7 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
   static const _tabDefs = [
     (icon: Icons.sports_cricket_outlined, label: 'Playing'),
     (icon: Icons.workspace_premium_outlined, label: 'Certificates'),
-    (icon: Icons.groups_outlined, label: 'Team'),
+    (icon: Icons.groups_outlined, label: 'Teams'),
     (icon: Icons.emoji_events_outlined, label: 'Trophies'),
   ];
 
@@ -398,22 +398,59 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
         ),
       );
 
+  /// Upload category derived from the item's tags — matches the tab names
+  /// (Playing, Certificates, Teams, Trophies). Untagged uploads (and older
+  /// ones) count as Playing.
+  String _categoryOf(Map<String, dynamic> item) {
+    final tags = (item['tags'] as List<dynamic>? ?? const [])
+        .map((t) => t.toString().toLowerCase())
+        .toSet();
+    for (final c in const ['certificates', 'teams', 'trophies']) {
+      if (tags.contains(c)) return c;
+    }
+    return 'playing';
+  }
+
+  List<Map<String, dynamic>> _mediaFor(String category) => _items
+      .where((i) =>
+          (i['mediaUrl'] as String?) != null && _categoryOf(i) == category)
+      .toList();
+
+  Widget _mediaGrid(List<Map<String, dynamic>> media) => GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.86,
+        ),
+        itemCount: media.length,
+        itemBuilder: (_, i) => _mediaCard(media[i]),
+      );
+
   List<Widget> _tabContent() {
     switch (_tab) {
       case 0:
         return _playingGrid();
       case 1:
-        return [
-          _emptyTab('📜',
-              'No certificates yet.\nCertificates you earn will appear here.'),
-        ];
+        final certs = _mediaFor('certificates');
+        return certs.isEmpty
+            ? [
+                _emptyTab('📜',
+                    'No certificates yet.\nUpload one below and pick the "Certificates" category.'),
+              ]
+            : [_mediaGrid(certs)];
       case 2:
         return _teamTab();
       default:
-        return [
-          _emptyTab('🏆',
-              'No trophies yet.\nWin matches and tournaments to collect them.'),
-        ];
+        final trophies = _mediaFor('trophies');
+        return trophies.isEmpty
+            ? [
+                _emptyTab('🏆',
+                    'No trophies yet.\nUpload one below and pick the "Trophies" category.'),
+              ]
+            : [_mediaGrid(trophies)];
     }
   }
 
@@ -437,8 +474,7 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
 
   // ── Playing: media grid ──
   List<Widget> _playingGrid() {
-    final media =
-        _items.where((i) => (i['mediaUrl'] as String?) != null).toList();
+    final media = _mediaFor('playing');
     if (media.isEmpty) {
       return [
         _emptyTab('🎬',
@@ -598,13 +634,19 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
 
   // ── Team tab ──
   List<Widget> _teamTab() {
-    if (_roster.isEmpty) {
+    final teamMedia = _mediaFor('teams');
+    if (_roster.isEmpty && teamMedia.isEmpty) {
       return [
         _emptyTab('👥',
             'You are not on a team yet.\nJoin a league and pick a team to see your squad.'),
       ];
     }
+    if (_roster.isEmpty) return [_mediaGrid(teamMedia)];
     return [
+      if (teamMedia.isNotEmpty) ...[
+        _mediaGrid(teamMedia),
+        const SizedBox(height: 14),
+      ],
       Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -733,6 +775,7 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
     XFile? media;
     bool isVideo = false;
     bool uploading = false;
+    String category = 'Playing'; // Playing | Certificates | Teams | Trophies
     final progress = ValueNotifier<double>(0);
 
     showModalBottomSheet(
@@ -807,6 +850,42 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
                   enabled: !uploading,
                   style: const TextStyle(color: Colors.white),
                   decoration: _inputDeco('Highlight (e.g. 125 Runs) — optional'),
+                ),
+                const SizedBox(height: 12),
+                // Which tab this upload shows under
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    for (final c in const [
+                      'Playing',
+                      'Certificates',
+                      'Teams',
+                      'Trophies'
+                    ])
+                      ChoiceChip(
+                        label: Text(c),
+                        selected: category == c,
+                        showCheckmark: false,
+                        selectedColor: AppColors.primary,
+                        backgroundColor: const Color(0xFF1B1B38),
+                        labelStyle: TextStyle(
+                            color: category == c
+                                ? Colors.white
+                                : Colors.white54,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            side: BorderSide(
+                                color: category == c
+                                    ? AppColors.primary
+                                    : Colors.white12)),
+                        onSelected: uploading
+                            ? null
+                            : (_) => setSheet(() => category = c),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 if (media == null)
@@ -889,6 +968,7 @@ class _PlaybookScreenState extends State<PlaybookScreen> {
                                 title: title,
                                 description: descCtrl.text.trim(),
                                 kind: isVideo ? 'VIDEO' : 'DRILL',
+                                tags: [category.toLowerCase()],
                                 onProgress: (v) => progress.value = v,
                               );
                               if (!sheetCtx.mounted) return;

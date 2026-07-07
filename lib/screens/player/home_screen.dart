@@ -157,8 +157,8 @@ class _HomeTabState extends State<_HomeTab> {
   ({String label, Color color}) get _tier {
     if (_qoScore >= 750) return (label: 'Purple Card', color: AppColors.primary);
     if (_qoScore >= 500) return (label: 'Blue Card', color: const Color(0xFF1A6BFF));
-    if (_qoScore >= 250) return (label: 'Silver Card', color: Colors.blueGrey);
-    return (label: 'Bronze Card', color: const Color(0xFFCD7F32));
+    if (_qoScore >= 250) return (label: 'Yellow Card', color: const Color(0xFFFFD600));
+    return (label: 'Green Card', color: const Color(0xFF00C853));
   }
 
   @override

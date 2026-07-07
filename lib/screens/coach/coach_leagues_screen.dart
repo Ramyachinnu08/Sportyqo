@@ -264,6 +264,12 @@ class _CoachLeaguesScreenState extends State<CoachLeaguesScreen> {
                                         : _league!['gender'] == 'WOMENS'
                                             ? "Women's"
                                             : 'Mixed',
+                                    if (_league!['leagueType'] ==
+                                        'GULLY')
+                                      'Gully'
+                                    else if (_league!['leagueType'] ==
+                                        'PROFESSIONAL')
+                                      'Professional',
                                   ].join('  •  '),
                                   style: const TextStyle(
                                       color: Colors

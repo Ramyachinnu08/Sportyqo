@@ -149,6 +149,7 @@ class SportyQoApi {
     required String name,
     required String location,
     required String gender, // "Men's" | "Women's" | "Mixed"
+    String? leagueType, // "Gully" | "Professional"
     required String sportId,
     String? iconEmoji,
     String? season,
@@ -160,6 +161,7 @@ class SportyQoApi {
       'name': name,
       'location': location,
       'gender': gender,
+      if (leagueType != null) 'leagueType': leagueType,
       'sportId': sportId,
       if (iconEmoji != null) 'iconEmoji': iconEmoji,
       if (season != null) 'season': season,
@@ -280,12 +282,14 @@ class SportyQoApi {
     required String title,
     String? description,
     String kind = 'NOTE',
+    List<String> tags = const [],
   }) async {
     return await _api.post('/playbook', body: {
       'title': title,
       if (description != null && description.isNotEmpty)
         'description': description,
       'kind': kind,
+      if (tags.isNotEmpty) 'tags': tags,
     }) as Map<String, dynamic>;
   }
 
