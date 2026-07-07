@@ -29,7 +29,6 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
     const CoachDugoutScreen(),
     const CoachPlaybookScreen(),
     const CoachPerformanceScreen(),
-    const CoachProfileScreen(),
   ];
 
   @override
@@ -69,10 +68,6 @@ class _CoachHomeScreenState extends State<CoachHomeScreen> {
                 icon: Icon(Icons.bar_chart_outlined),
                 activeIcon: Icon(Icons.bar_chart),
                 label: 'Team Performance'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.person_outline),
-                activeIcon: Icon(Icons.person),
-                label: 'Profile'),
           ],
         ),
       ),
@@ -264,11 +259,20 @@ class _CoachHomeTabState extends State<_CoachHomeTab> {
         ]),
       ),
       const SizedBox(width: 10),
-      AvatarCircle(
-        avatarUrl: _coach['avatarUrl'] as String?,
-        name: _coach['fullName'] as String? ?? 'C',
-        size: 44,
-        borderColor: _blue,
+      GestureDetector(
+        onTap: () async {
+          await Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const CoachProfileScreen()));
+          _load(); // reflect name/photo edits on return
+        },
+        child: AvatarCircle(
+          avatarUrl: _coach['avatarUrl'] as String?,
+          name: _coach['fullName'] as String? ?? 'C',
+          size: 44,
+          borderColor: _blue,
+        ),
       ),
     ]);
   }
