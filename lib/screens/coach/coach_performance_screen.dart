@@ -3,7 +3,12 @@ import '../../theme/app_theme.dart';
 import '../../services/api_client.dart';
 import '../../services/sportyqo_api.dart';
 import '../shared/app_toast.dart';
+import '../shared/avatar_picker.dart';
 
+/// My Players (design p.8): squad-building card with Total / Active /
+/// Inactive counts, Add Player by SportyQo ID, All / Active / Inactive
+/// tabs, photo player rows and the Recommend Players card. Players come
+/// from the coach's leagues (GET /players) with a community fallback.
 class CoachPerformanceScreen extends StatefulWidget {
   const CoachPerformanceScreen({super.key});
 
@@ -12,11 +17,9 @@ class CoachPerformanceScreen extends StatefulWidget {
       _CoachPerformanceScreenState();
 }
 
-class _CoachPerformanceScreenState
-    extends State<CoachPerformanceScreen> {
+class _CoachPerformanceScreenState extends State<CoachPerformanceScreen> {
   int _tabIndex = 0;
-  final TextEditingController _searchController =
-  TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
   List<Map<String, dynamic>> _players = [];
@@ -61,6 +64,7 @@ class _CoachPerformanceScreenState
                 : '${dt.day} ${_monthsShort[dt.month - 1]} ${dt.year}',
             'active': r['onTeam'] == true,
             'emoji': r['sportEmoji'] ?? '🏅',
+            'avatarUrl': r['avatarUrl'],
             'recommended': r['isRecommended'] == true,
           };
         }).toList();
@@ -71,8 +75,8 @@ class _CoachPerformanceScreenState
     }
   }
 
-  final TextEditingController _addPlayerController =
-  TextEditingController();
+
+  final TextEditingController _addPlayerController = TextEditingController();
 
   @override
   void dispose() {
@@ -85,404 +89,443 @@ class _CoachPerformanceScreenState
     var list = _tabIndex == 0
         ? _players
         : _tabIndex == 1
-        ? _players.where((p) => p['active'] == true).toList()
-        : _players.where((p) => p['active'] == false).toList();
-
+            ? _players.where((p) => p['active'] == true).toList()
+            : _players.where((p) => p['active'] == false).toList();
     if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
       list = list
           .where((p) =>
-      p['name']
-          .toString()
-          .toLowerCase()
-          .contains(_searchQuery.toLowerCase()) ||
-          p['sqid']
-              .toString()
-              .toLowerCase()
-              .contains(_searchQuery.toLowerCase()))
+              p['name'].toString().toLowerCase().contains(q) ||
+              p['sqid'].toString().toLowerCase().contains(q))
           .toList();
     }
     return list;
   }
 
+  int get _activeCount => _players.where((p) => p['active'] == true).length;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF0A0A1A),
       body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        child: _loading
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.primary))
+            : RefreshIndicator(
+                color: AppColors.primary,
+                backgroundColor: const Color(0xFF16162E),
+                onRefresh: _loadPlayers,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                   children: [
-
-                    // ── Page Title ──
-                    Row(children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text('My Players',
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w800)),
-                            Text(
-                                'Manage players under you and track their journey.',
-                                style: TextStyle(
-                                    color: Colors.white38,
-                                    fontSize: 11)),
-                          ],
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () => _showAddPlayer(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(children: const [
-                            Icon(Icons.add, color: Colors.white, size: 16),
-                            SizedBox(width: 4),
-                            Text('Add Player',
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13)),
-                          ]),
-                        ),
-                      ),
-                    ]),
-
+                    _header(),
+                    const SizedBox(height: 16),
+                    _squadCard(),
                     const SizedBox(height: 14),
-
-                    // ── Build Your Squad Card ──
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF111111),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: Row(children: [
-                        Container(
-                          width: 52, height: 52,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.people_outline,
-                              color: AppColors.primary, size: 26),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text('Build your squad',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15)),
-                              SizedBox(height: 3),
-                              Text(
-                                  'Add players using their SportyQo ID\nand manage their progress.',
-                                  style: TextStyle(
-                                      color: Colors.white38,
-                                      fontSize: 11,
-                                      height: 1.4)),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            const Text('Total Players',
-                                style: TextStyle(
-                                    color: Colors.white38, fontSize: 10)),
-                            Text('${_players.length}',
-                                style: const TextStyle(
-                                    color: AppColors.primary,
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w800,
-                                    height: 1.1)),
-                            Row(children: [
-                              const Text('Active ',
-                                  style: TextStyle(
-                                      color: Colors.white38, fontSize: 10)),
-                              Text(
-                                  '${_players.where((p) => p['active'] == true).length}',
-                                  style: const TextStyle(
-                                      color: Color(0xFF00C853),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700)),
-                              const Text('  Inactive ',
-                                  style: TextStyle(
-                                      color: Colors.white38, fontSize: 10)),
-                              Text(
-                                  '${_players.where((p) => p['active'] == false).length}',
-                                  style: const TextStyle(
-                                      color: Colors.orange,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700)),
-                            ]),
-                          ],
-                        ),
-                      ]),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // ── Add Player by SportyQo ID ──
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF111111),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Add Player by SportyQo ID',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13)),
-                          const SizedBox(height: 10),
-                          Row(children: [
-                            Expanded(
-                              child: Container(
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1A1A1A),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: Colors.white10),
-                                ),
-                                child: TextField(
-                                  controller: _searchController,
-                                  onChanged: (v) =>
-                                      setState(() => _searchQuery = v),
-                                  style: const TextStyle(
-                                      color: Colors.white, fontSize: 13),
-                                  decoration: InputDecoration(
-                                    hintText: 'Enter SportyQo ID or name',
-                                    hintStyle: const TextStyle(
-                                        color: Colors.white24, fontSize: 13),
-                                    prefixIcon: const Icon(Icons.search,
-                                        color: Colors.white38, size: 18),
-                                    suffixIcon: _searchQuery.isNotEmpty
-                                        ? GestureDetector(
-                                      onTap: () {
-                                        _searchController.clear();
-                                        setState(
-                                                () => _searchQuery = '');
-                                      },
-                                      child: const Icon(Icons.close,
-                                          color: Colors.white38,
-                                          size: 18),
-                                    )
-                                        : null,
-                                    border: InputBorder.none,
-                                    contentPadding:
-                                    const EdgeInsets.symmetric(
-                                        vertical: 12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            GestureDetector(
-                              onTap: () => _showAddPlayer(context),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 12),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Text('Add',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13)),
-                              ),
-                            ),
-                          ]),
-                          if (_searchQuery.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              '${_filtered.length} result${_filtered.length != 1 ? 's' : ''} found',
-                              style: const TextStyle(
-                                  color: AppColors.primary, fontSize: 11),
-                            ),
-                          ],
-                          const SizedBox(height: 6),
-                          Row(children: const [
-                            SizedBox(width: 4),
-                            Text('Scan Player QR code',
-                                style: TextStyle(
-                                    color: Colors.white38, fontSize: 11)),
-                            SizedBox(width: 4),
-                            Icon(Icons.qr_code,
-                                color: Colors.white38, size: 12),
-                          ]),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // ── Tabs ──
-                    Row(children: [
-                      _PlayerTab(
-                        icon: Icons.people_outline,
-                        label: 'All (${_players.length})',
-                        isActive: _tabIndex == 0,
-                        onTap: () => setState(() => _tabIndex = 0),
-                      ),
-                      const SizedBox(width: 16),
-                      _PlayerTab(
-                        icon: Icons.people_outline,
-                        label:
-                        'Active (${_players.where((p) => p['active'] == true).length})',
-                        isActive: _tabIndex == 1,
-                        onTap: () => setState(() => _tabIndex = 1),
-                        dotColor: const Color(0xFF00C853),
-                      ),
-                      const SizedBox(width: 16),
-                      _PlayerTab(
-                        icon: Icons.people_outline,
-                        label:
-                        'Inactive (${_players.where((p) => p['active'] == false).length})',
-                        isActive: _tabIndex == 2,
-                        onTap: () => setState(() => _tabIndex = 2),
-                        dotColor: Colors.orange,
-                      ),
-                    ]),
-
-                    const SizedBox(height: 2),
-                    const Divider(color: Colors.white10, height: 1),
+                    _addBySqidCard(),
+                    const SizedBox(height: 16),
+                    _tabsRow(),
                     const SizedBox(height: 12),
-
-                    // ── Player List ──
-                    if (_loading)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(32),
-                          child: CircularProgressIndicator(
-                              color: Color(0xFF00C853)),
-                        ),
-                      )
-                    else if (_filtered.isEmpty)
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Column(children: [
-                            const Text('🔍',
-                                style: TextStyle(fontSize: 40)),
-                            const SizedBox(height: 12),
-                            Text(
-                              _searchQuery.isNotEmpty
-                                  ? 'No players found for\n"$_searchQuery"'
-                                  : 'No players in this category',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                  color: Colors.white54, fontSize: 14),
-                            ),
-                          ]),
+                    if (_filtered.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 36),
+                        child: Center(
+                          child: Text(
+                            _searchQuery.isNotEmpty
+                                ? 'No players found for\n"$_searchQuery"'
+                                : 'No players in this category yet.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white38, fontSize: 13),
+                          ),
                         ),
                       )
                     else
-                      ..._filtered.map((p) => GestureDetector(
-                        onTap: () =>
-                            _showPlayerDetail(context, p),
-                        child: _PlayerTile(player: p),
-                      )),
-
-                    const SizedBox(height: 16),
-
-                    // ── Recommend Players Card ──
-                    GestureDetector(
-                      onTap: () => _showRecommendNow(context),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white10),
+                      for (final p in _filtered)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _playerRow(p),
                         ),
-                        child: Row(children: [
-                          Container(
-                            width: 48, height: 48,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withOpacity(0.15),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.people_alt_outlined,
-                                color: AppColors.primary, size: 24),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: const [
-                                Text('Recommend Players',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14)),
-                                SizedBox(height: 3),
-                                Text(
-                                    'Recommend talented players\nto clubs and leagues.',
-                                    style: TextStyle(
-                                        color: Colors.white38,
-                                        fontSize: 11,
-                                        height: 1.4)),
-                              ],
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () => _showRecommendNow(context),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(children: const [
-                                Text('Recommend Now',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 12)),
-                                SizedBox(width: 4),
-                                Icon(Icons.arrow_forward,
-                                    color: Colors.white, size: 14),
-                              ]),
-                            ),
-                          ),
-                        ]),
-                      ),
-                    ),
-
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 8),
+                    _recommendCard(),
                   ],
                 ),
               ),
-            ),
-          ],
-        ),
       ),
+    );
+  }
+
+  // ── Header: "My Players" + Add Player button ──
+  Widget _header() => Row(children: [
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
+            Text('My Players',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800)),
+            SizedBox(height: 2),
+            Text('Manage players under you and track their journey.',
+                style: TextStyle(color: Colors.white54, fontSize: 11.5)),
+          ]),
+        ),
+        ElevatedButton.icon(
+          onPressed: () => _showAddPlayer(context),
+          icon: const Icon(Icons.add, size: 16, color: Colors.white),
+          label: const Text('Add Player',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ]);
+
+  // ── Build your squad card with counts ──
+  Widget _squadCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14142B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.primary.withOpacity(0.12),
+            border: Border.all(color: AppColors.primary.withOpacity(0.4)),
+          ),
+          child: const Icon(Icons.person_add_alt_outlined,
+              color: AppColors.primaryLight, size: 22),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
+            Text('Build your squad',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700)),
+            SizedBox(height: 3),
+            Text('Add players using their SportyQo ID\nand manage their progress.',
+                style: TextStyle(
+                    color: Colors.white38, fontSize: 10.5, height: 1.4)),
+          ]),
+        ),
+        Container(width: 1, height: 52, color: Colors.white10),
+        const SizedBox(width: 14),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Total Players',
+              style: TextStyle(color: Colors.white38, fontSize: 10)),
+          Text('${_players.length}',
+              style: const TextStyle(
+                  color: AppColors.primaryLight,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800)),
+          Row(children: [
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Active',
+                  style: TextStyle(color: Colors.white38, fontSize: 10)),
+              Text('$_activeCount',
+                  style: const TextStyle(
+                      color: Color(0xFF00C853),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(width: 14),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Inactive',
+                  style: TextStyle(color: Colors.white38, fontSize: 10)),
+              Text('${_players.length - _activeCount}',
+                  style: const TextStyle(
+                      color: Colors.amber,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700)),
+            ]),
+          ]),
+        ]),
+      ]),
+    );
+  }
+
+  // ── Add Player by SportyQo ID ──
+  Widget _addBySqidCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14142B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Add Player by SportyQo ID',
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w700)),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              onChanged: (v) => setState(() => _searchQuery = v.trim()),
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Enter SportyQo ID or name',
+                hintStyle:
+                    const TextStyle(color: Colors.white30, fontSize: 12.5),
+                prefixIcon: const Icon(Icons.search,
+                    color: Colors.white38, size: 18),
+                filled: true,
+                fillColor: const Color(0xFF1B1B38),
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          ElevatedButton(
+            onPressed: () => _showAddPlayer(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Add Player',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  // ── All / Active / Inactive tabs ──
+  Widget _tabsRow() {
+    Widget tab(int i, String label, Color? dot) => Expanded(
+          child: GestureDetector(
+            onTap: () => setState(() => _tabIndex = i),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: _tabIndex == i
+                        ? AppColors.primary
+                        : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
+              ),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.people_outline,
+                    size: 15,
+                    color: _tabIndex == i
+                        ? AppColors.primaryLight
+                        : Colors.white38),
+                const SizedBox(width: 6),
+                Text(label,
+                    style: TextStyle(
+                        color: _tabIndex == i
+                            ? Colors.white
+                            : Colors.white54,
+                        fontSize: 12,
+                        fontWeight: _tabIndex == i
+                            ? FontWeight.w700
+                            : FontWeight.w500)),
+                if (dot != null) ...[
+                  const SizedBox(width: 5),
+                  Container(
+                      width: 6,
+                      height: 6,
+                      decoration:
+                          BoxDecoration(color: dot, shape: BoxShape.circle)),
+                ],
+              ]),
+            ),
+          ),
+        );
+    return Row(children: [
+      tab(0, 'All Players (${_players.length})', null),
+      tab(1, 'Active ($_activeCount)', const Color(0xFF00C853)),
+      tab(2, 'Inactive (${_players.length - _activeCount})', Colors.amber),
+    ]);
+  }
+
+  // ── Player row (photo, name, SQID, role chip, added date) ──
+  Widget _playerRow(Map<String, dynamic> p) {
+    return GestureDetector(
+      onTap: () => _showPlayerDetail(context, p),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF14142B),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(children: [
+          Stack(children: [
+            AvatarCircle(
+              avatarUrl: p['avatarUrl'] as String?,
+              name: p['name'] as String? ?? 'P',
+              size: 44,
+              borderWidth: 1.5,
+            ),
+            Positioned(
+              bottom: 1,
+              right: 1,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: p['active'] == true
+                      ? const Color(0xFF00C853)
+                      : Colors.amber,
+                  shape: BoxShape.circle,
+                  border:
+                      Border.all(color: const Color(0xFF14142B), width: 2),
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 5,
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(p['name'] as String? ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700)),
+              Text('SQID: ${p['sqid']}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: AppColors.primaryLight, fontSize: 11)),
+              Text('⚡ ${p['qoScore']} Qo',
+                  style: const TextStyle(
+                      color: Colors.amber, fontSize: 10.5)),
+            ]),
+          ),
+          Expanded(
+            flex: 4,
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(p['role'] as String? ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: Colors.white70, fontSize: 11.5)),
+              if ((p['subRole'] as String?)?.isNotEmpty == true)
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(p['subRole'] as String,
+                      style: const TextStyle(
+                          color: Colors.white54, fontSize: 10)),
+                ),
+            ]),
+          ),
+          if ((p['added'] as String?)?.isNotEmpty == true)
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              const Text('Added on',
+                  style: TextStyle(color: Colors.white30, fontSize: 9.5)),
+              Text(p['added'] as String,
+                  style: const TextStyle(
+                      color: Colors.white54, fontSize: 10.5)),
+            ]),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right, color: Colors.white24, size: 18),
+        ]),
+      ),
+    );
+  }
+
+  // ── Recommend Players card ──
+  Widget _recommendCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.primary.withOpacity(0.35)),
+      ),
+      child: Row(children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.primary.withOpacity(0.15),
+            border: Border.all(color: AppColors.primary.withOpacity(0.4)),
+          ),
+          child: const Icon(Icons.recommend_outlined,
+              color: AppColors.primaryLight, size: 22),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
+            Text('Recommend Players',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700)),
+            SizedBox(height: 3),
+            Text('Recommend talented players\nto clubs and leagues.',
+                style: TextStyle(
+                    color: Colors.white38, fontSize: 11, height: 1.4)),
+          ]),
+        ),
+        OutlinedButton(
+          onPressed: () => _showRecommendNow(context),
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: AppColors.primary),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: const [
+            Text('Recommend Now',
+                style: TextStyle(
+                    color: AppColors.primaryLight,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700)),
+            SizedBox(width: 4),
+            Icon(Icons.arrow_forward,
+                color: AppColors.primaryLight, size: 13),
+          ]),
+        ),
+      ]),
     );
   }
 
@@ -698,156 +741,6 @@ class _CoachPerformanceScreenState
   /// "Recommend Now": lists the coach's top players (by Qo score) with a
   /// real Send action — POST /players/:id/recommend records it and
   /// notifies the player. Rows flip to "Sent ✓" once recommended.
-  void _showRecommendNow(BuildContext context) {
-    final sending = <String>{};
-    final top = [..._players]
-      ..sort((a, b) =>
-          (b['qoScore'] as int).compareTo(a['qoScore'] as int));
-    final list = top.take(8).toList();
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF111111),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, setSheetState) => Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Recommend Players',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800)),
-              const SizedBox(height: 6),
-              const Text(
-                  'Select players to recommend to clubs and leagues.',
-                  style: TextStyle(color: Colors.white54, fontSize: 13)),
-              const SizedBox(height: 20),
-              if (list.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Center(
-                    child: Text('No players to recommend yet.',
-                        style:
-                            TextStyle(color: Colors.white38, fontSize: 13)),
-                  ),
-                ),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: list.map((p) {
-                      final id = p['id'] as String?;
-                      final sent = p['recommended'] == true;
-                      final busy = id != null && sending.contains(id);
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1A1A1A),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white10),
-                        ),
-                        child: Row(children: [
-                          Text(p['emoji'] as String,
-                              style: const TextStyle(fontSize: 24)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Text(p['name'] as String,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13)),
-                                Text("${p['role']} • ${p['sqid']}",
-                                    style: const TextStyle(
-                                        color: Colors.white38,
-                                        fontSize: 11)),
-                              ],
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: (id == null || sent || busy)
-                                ? null
-                                : () async {
-                                    setSheetState(() => sending.add(id));
-                                    try {
-                                      await SportyQoApi.recommendPlayer(id);
-                                      if (!sheetContext.mounted) return;
-                                      setSheetState(() {
-                                        sending.remove(id);
-                                        p['recommended'] = true;
-                                      });
-                                      AppToast.success(sheetContext,
-                                          "${p['name']} recommended to clubs! ✅");
-                                    } on ApiException catch (e) {
-                                      if (!sheetContext.mounted) return;
-                                      setSheetState(
-                                          () => sending.remove(id));
-                                      AppToast.error(
-                                          sheetContext, e.message);
-                                    } catch (_) {
-                                      if (!sheetContext.mounted) return;
-                                      setSheetState(
-                                          () => sending.remove(id));
-                                      AppToast.error(sheetContext,
-                                          'Could not send — try again.');
-                                    }
-                                  },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: sent
-                                    ? AppColors.primary.withOpacity(0.15)
-                                    : AppColors.primary,
-                                borderRadius: BorderRadius.circular(20),
-                                border: sent
-                                    ? Border.all(
-                                        color: AppColors.primary
-                                            .withOpacity(0.5))
-                                    : null,
-                              ),
-                              child: busy
-                                  ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white))
-                                  : Text(sent ? 'Sent ✓' : 'Recommend',
-                                      style: TextStyle(
-                                          color: sent
-                                              ? AppColors.primary
-                                              : Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 11)),
-                            ),
-                          ),
-                        ]),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                  onPressed: () => Navigator.pop(sheetContext),
-                  child: const Text('Close',
-                      style: TextStyle(color: Colors.white38))),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _MiniStat extends StatelessWidget {
@@ -865,152 +758,5 @@ class _MiniStat extends StatelessWidget {
       Text(label,
           style: const TextStyle(color: Colors.white38, fontSize: 10)),
     ]);
-  }
-}
-
-class _PlayerTab extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-  final Color? dotColor;
-  const _PlayerTab(
-      {required this.icon,
-        required this.label,
-        required this.isActive,
-        required this.onTap,
-        this.dotColor});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(children: [
-        Row(children: [
-          Icon(icon,
-              color: isActive ? AppColors.primary : Colors.white38,
-              size: 14),
-          const SizedBox(width: 4),
-          Text(label,
-              style: TextStyle(
-                  color: isActive ? AppColors.primary : Colors.white38,
-                  fontSize: 12,
-                  fontWeight:
-                  isActive ? FontWeight.w700 : FontWeight.w400)),
-          if (dotColor != null) ...[
-            const SizedBox(width: 4),
-            Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                    color: dotColor, shape: BoxShape.circle)),
-          ],
-        ]),
-        const SizedBox(height: 6),
-        Container(
-            height: 2,
-            width: 80,
-            color: isActive ? AppColors.primary : Colors.transparent),
-      ]),
-    );
-  }
-}
-
-class _PlayerTile extends StatelessWidget {
-  final Map<String, dynamic> player;
-  const _PlayerTile({required this.player});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111111),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(children: [
-        Stack(children: [
-          Container(
-            width: 48, height: 48,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primary.withOpacity(0.15),
-              border: Border.all(
-                  color: AppColors.primary.withOpacity(0.3)),
-            ),
-            child: Center(
-                child: Text(player['emoji'] as String,
-                    style: const TextStyle(fontSize: 24))),
-          ),
-          Positioned(
-            bottom: 0, right: 0,
-            child: Container(
-              width: 12, height: 12,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: player['active'] as bool
-                    ? const Color(0xFF00C853)
-                    : Colors.orange,
-                border: Border.all(
-                    color: const Color(0xFF111111), width: 1.5),
-              ),
-            ),
-          ),
-        ]),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(player['name'] as String,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14)),
-              Text(player['sqid'] as String,
-                  style: const TextStyle(
-                      color: AppColors.primary, fontSize: 11)),
-              Row(children: [
-                const Icon(Icons.bolt, color: Colors.amber, size: 12),
-                const SizedBox(width: 2),
-                Text('Qo ${player['qoScore']}',
-                    style: const TextStyle(
-                        color: Colors.amber,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600)),
-              ]),
-            ],
-          ),
-        ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(player['role'] as String,
-                style: const TextStyle(
-                    color: Colors.white60,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600)),
-            Text(player['subRole'] as String,
-                style: const TextStyle(
-                    color: Colors.white38, fontSize: 11)),
-          ],
-        ),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            const Text('Added on',
-                style: TextStyle(color: Colors.white38, fontSize: 10)),
-            Text(player['added'] as String,
-                style: const TextStyle(
-                    color: Colors.white54, fontSize: 10)),
-          ],
-        ),
-        const SizedBox(width: 8),
-        const Icon(Icons.chevron_right, color: Colors.white24, size: 18),
-      ]),
-    );
   }
 }

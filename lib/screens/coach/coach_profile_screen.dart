@@ -1,41 +1,38 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import '../shared/avatar_picker.dart';
-import '../shared/app_toast.dart';
 import 'package:flutter/services.dart';
-import '../auth/choose_role_screen.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../theme/app_theme.dart';
+import '../../services/api_client.dart';
 import '../../services/sportyqo_api.dart';
 import '../../services/auth_service.dart';
-import '../../services/api_client.dart';
+import '../auth/choose_role_screen.dart';
+import '../shared/app_toast.dart';
+import '../shared/avatar_picker.dart';
 
+/// Coach Profile (design p.9): identity card with certification lines →
+/// stats row (Players / Leagues / Certificates / Years) → About Coach →
+/// Experience → Recommended Players impact card → settings & logout.
+/// Data: /me, /coach/dashboard, /coach/certifications.
 class CoachProfileScreen extends StatefulWidget {
   const CoachProfileScreen({super.key});
 
   @override
-  State<CoachProfileScreen> createState() =>
-      _CoachProfileScreenState();
+  State<CoachProfileScreen> createState() => _CoachProfileScreenState();
 }
 
-class _CoachProfileScreenState
-    extends State<CoachProfileScreen> {
-  bool _notificationsOn = true;
-  bool _darkMode = true;
-  bool _privateProfile = false;
+class _CoachProfileScreenState extends State<CoachProfileScreen> {
+  bool _loading = true;
 
-  // Live profile data (GET /me, /coach/dashboard, /coach/performance,
-  // /coach/certifications). Placeholders show until loaded.
   String _name = '';
-  String _title = 'Coach';
+  String _title = '';
   String _academy = '';
-  String _location = '';
   String _bio = '';
-  String _yearsExp = '—';
+  String _location = '';
+  String? _avatarUrl;
+  int? _years;
   bool _isVerified = false;
-  int _playerCount = 0;
-  int _leagueCount = 0;
-  int _matchCount = 0;
-  int _recCount = 0;
-  String _certTitle = '';
+  Map<String, dynamic> _counts = const {};
+  List<Map<String, dynamic>> _certs = [];
 
   @override
   void initState() {
@@ -43,719 +40,487 @@ class _CoachProfileScreenState
     _loadProfile();
   }
 
-  String? _avatarUrl;
-
   Future<void> _loadProfile() async {
     try {
-      final me = await SportyQoApi.me();
+      final results = await Future.wait([
+        SportyQoApi.me(),
+        SportyQoApi.coachDashboard(),
+        SportyQoApi.coachCertifications(),
+      ]);
       if (!mounted) return;
+      final me = results[0] as Map<String, dynamic>;
+      final dash = results[1] as Map<String, dynamic>;
       setState(() {
         _name = me['fullName'] as String? ?? '';
-        _avatarUrl = me['avatarUrl'] as String?;
-        _title = me['title'] as String? ?? 'Coach';
+        _title = me['title'] as String? ?? '';
         _academy = me['academy'] as String? ?? '';
-        _location = me['location'] as String? ?? '';
         _bio = me['bio'] as String? ?? '';
+        _location = me['location'] as String? ?? '';
+        _avatarUrl = me['avatarUrl'] as String?;
+        _years = (me['yearsExperience'] as num?)?.toInt();
         _isVerified = me['isVerifiedCoach'] == true;
-        final y = me['yearsExperience'];
-        _yearsExp = y == null ? '—' : '$y';
+        _counts = dash['counts'] as Map<String, dynamic>? ?? const {};
+        _certs = (results[2] as List<dynamic>).cast<Map<String, dynamic>>();
+        _loading = false;
       });
-    } catch (_) {}
-    try {
-      final dash = await SportyQoApi.coachDashboard();
-      if (!mounted) return;
-      final counts = dash['counts'] as Map<String, dynamic>? ?? {};
-      setState(() {
-        _playerCount = (counts['players'] as num?)?.toInt() ?? 0;
-        _leagueCount = (counts['leagues'] as num?)?.toInt() ?? 0;
-        _recCount = (counts['recommendations'] as num?)?.toInt() ?? 0;
-      });
-    } catch (_) {}
-    try {
-      final perf = await SportyQoApi.coachPerformance();
-      if (!mounted) return;
-      final totals = perf['totals'] as Map<String, dynamic>? ?? {};
-      setState(() {
-        _matchCount = (totals['matchesCompleted'] as num?)?.toInt() ?? 0;
-      });
-    } catch (_) {}
-    try {
-      final certs = await SportyQoApi.coachCertifications();
-      if (!mounted) return;
-      final approved = certs.cast<Map<String, dynamic>>().where(
-          (c) => (c['status'] as String?)?.toUpperCase() == 'APPROVED');
-      setState(() {
-        _certTitle = approved.isEmpty
-            ? ''
-            : approved.first['title'] as String? ?? '';
-      });
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: const Color(0xFF0A0A1A),
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
+        child: _loading
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.primary))
+            : RefreshIndicator(
+                color: AppColors.primary,
+                backgroundColor: const Color(0xFF16162E),
+                onRefresh: _loadProfile,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                   children: [
-
-                    // ── Header ──
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                          16, 16, 16, 0),
-                      child: Row(children: [
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                            children: const [
-                              Text('Coach Profile',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 20,
-                                      fontWeight:
-                                      FontWeight.w800)),
-                              Text(
-                                  'View coach details and track impact',
-                                  style: TextStyle(
-                                      color: Colors.white38,
-                                      fontSize: 11)),
-                            ],
-                          ),
-                        ),
-                        // Share button
-                        GestureDetector(
-                          onTap: () => _shareProfile(context),
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                                color: Colors.white10,
-                                borderRadius:
-                                BorderRadius.circular(10)),
-                            child: const Icon(
-                                Icons.ios_share_outlined,
-                                color: Colors.white,
-                                size: 18),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // 3 dots menu
-                        GestureDetector(
-                          onTap: () =>
-                              _showMoreMenu(context),
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                                color: Colors.white10,
-                                borderRadius:
-                                BorderRadius.circular(10)),
-                            child: const Icon(
-                                Icons.more_horiz,
-                                color: Colors.white,
-                                size: 18),
-                          ),
-                        ),
-                      ]),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ── Profile Info ──
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16),
-                      child: Row(
-                        crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                        children: [
-                          // Avatar
-                          GestureDetector(
-                            onTap: () =>
-                                _showPhotoOptions(context),
-                            child: Stack(children: [
-                              AvatarCircle(
-                                avatarUrl: _avatarUrl,
-                                name: _name,
-                                size: 80,
-                                borderColor: const Color(0xFF00C853),
-                              ),
-                              Positioned(
-                                bottom: 0,
-                                right: 0,
-                                child: Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: const Color(
-                                        0xFF00C853),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                        color: const Color(
-                                            0xFF0A0A0A),
-                                        width: 1.5),
-                                  ),
-                                  child: const Icon(
-                                      Icons.camera_alt,
-                                      color: Colors.white,
-                                      size: 12),
-                                ),
-                              ),
-                              Positioned(
-                                bottom: 0,
-                                left: 0,
-                                child: Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: const Color(
-                                        0xFF1A6BFF),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                        color: const Color(
-                                            0xFF0A0A0A),
-                                        width: 1.5),
-                                  ),
-                                  child: const Icon(
-                                      Icons.check,
-                                      color: Colors.white,
-                                      size: 13),
-                                ),
-                              ),
-                            ]),
-                          ),
-
-                          const SizedBox(width: 16),
-
-                          // Info
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                              children: [
-                                Row(children: [
-                                  Flexible(
-                                    child: Text(
-                                        _name.isEmpty ? 'Coach' : _name,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 18,
-                                            fontWeight:
-                                            FontWeight.w800)),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  if (_isVerified)
-                                    const Icon(Icons.verified,
-                                        color: Color(0xFF1A6BFF),
-                                        size: 16),
-                                ]),
-                                Text(_title,
-                                    style: const TextStyle(
-                                        color:
-                                        Color(0xFF00C853),
-                                        fontSize: 13,
-                                        fontWeight:
-                                        FontWeight.w600)),
-                                Text(
-                                    _academy,
-                                    style: const TextStyle(
-                                        color: Colors.white60,
-                                        fontSize: 12)),
-                                const SizedBox(height: 6),
-                                if (_location.isNotEmpty)
-                                  Row(children: [
-                                    const Icon(
-                                        Icons
-                                            .location_on_outlined,
-                                        color: Colors.white38,
-                                        size: 12),
-                                    const SizedBox(width: 3),
-                                    Text(_location,
-                                        style: const TextStyle(
-                                            color: Colors.white38,
-                                            fontSize: 11)),
-                                  ]),
-                                const SizedBox(height: 4),
-                                Row(children: [
-                                  const Icon(Icons.access_time,
-                                      color: Colors.white38,
-                                      size: 12),
-                                  const SizedBox(width: 3),
-                                  Text('$_yearsExp Years Experience',
-                                      style: const TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: 11)),
-                                ]),
-                                const SizedBox(height: 4),
-                                if (_certTitle.isNotEmpty)
-                                  Row(children: [
-                                    const Icon(
-                                        Icons
-                                            .workspace_premium_outlined,
-                                        color: Colors.white38,
-                                        size: 12),
-                                    const SizedBox(width: 3),
-                                    Flexible(
-                                      child: Text(
-                                          _certTitle,
-                                          overflow:
-                                              TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                              color: Colors.white38,
-                                              fontSize: 11)),
-                                    ),
-                                  ]),
-                                const SizedBox(height: 6),
-                                if (_isVerified)
-                                  Row(children: const [
-                                    Icon(Icons.check_circle,
-                                        color: Color(0xFF00C853),
-                                        size: 14),
-                                    SizedBox(width: 4),
-                                    Text('Verified Coach',
-                                        style: TextStyle(
-                                            color:
-                                            Color(0xFF00C853),
-                                            fontSize: 12,
-                                            fontWeight:
-                                            FontWeight.w600)),
-                                  ]),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ── Stats Row ──
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
-                          borderRadius:
-                          BorderRadius.circular(16),
-                          border:
-                          Border.all(color: Colors.white10),
-                        ),
-                        child: Row(
-                          mainAxisAlignment:
-                          MainAxisAlignment.spaceAround,
-                          children: [
-                            _StatCol(
-                                icon: Icons.people_outline,
-                                value: '$_playerCount',
-                                label: 'Total\nPlayers'),
-                            _Divider(),
-                            _StatCol(
-                                icon: Icons
-                                    .emoji_events_outlined,
-                                value: '$_leagueCount',
-                                label: 'Leagues'),
-                            _Divider(),
-                            _StatCol(
-                                icon: Icons
-                                    .sports_cricket_outlined,
-                                value: '$_matchCount',
-                                label: 'Matches'),
-                            _Divider(),
-                            _StatCol(
-                                icon: Icons
-                                    .access_time_outlined,
-                                value: _yearsExp,
-                                label: 'Years\nExperience'),
-                          ],
-                        ),
-                      ),
-                    ),
-
+                    _header(),
                     const SizedBox(height: 16),
-
-                    // ── About Coach ──
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
-                          borderRadius:
-                          BorderRadius.circular(16),
-                          border:
-                          Border.all(color: Colors.white10),
-                        ),
-                        child: Column(
-                          crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                          children: [
-                            Row(children: [
-                              const Icon(Icons.person_outline,
-                                  color: Color(0xFF00C853),
-                                  size: 18),
-                              const SizedBox(width: 8),
-                              const Text('About Coach',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight:
-                                      FontWeight.w700,
-                                      fontSize: 15)),
-                              const Spacer(),
-                              // Direct path to edit the bio — it was
-                              // only reachable via Settings before.
-                              GestureDetector(
-                                onTap: () =>
-                                    _showEditProfile(context),
-                                child: const Icon(
-                                    Icons.edit_outlined,
-                                    color: Colors.white38,
-                                    size: 18),
-                              ),
-                            ]),
-                            const SizedBox(height: 10),
-                            Text(
-                                _bio.isEmpty
-                                    ? 'No bio added yet. Tap the pencil to add one.'
-                                    : _bio,
-                                style: const TextStyle(
-                                    color: Colors.white54,
-                                    fontSize: 13,
-                                    height: 1.6)),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // ── Experience ──
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
-                          borderRadius:
-                          BorderRadius.circular(16),
-                          border:
-                          Border.all(color: Colors.white10),
-                        ),
-                        child: Column(
-                          crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                          children: [
-                            Row(children: const [
-                              Icon(
-                                  Icons
-                                      .calendar_today_outlined,
-                                  color: Color(0xFF00C853),
-                                  size: 18),
-                              SizedBox(width: 8),
-                              Text('Experience',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight:
-                                      FontWeight.w700,
-                                      fontSize: 15)),
-                            ]),
-                            const SizedBox(height: 16),
-                            _ExperienceTile(
-                              period: 'Present',
-                              role: _title,
-                              org: _academy.isEmpty
-                                  ? 'Independent'
-                                  : _academy,
-                              desc: _bio.isEmpty
-                                  ? 'Coaching on SportyQo.'
-                                  : _bio,
-                              isActive: true,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // ── Recommended Players ──
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF111111),
-                          borderRadius:
-                          BorderRadius.circular(16),
-                          border:
-                          Border.all(color: Colors.white10),
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment
-                                  .spaceBetween,
-                              children: const [
-                                Row(children: [
-                                  Icon(Icons.people_outline,
-                                      color:
-                                      Color(0xFF00C853),
-                                      size: 18),
-                                  SizedBox(width: 8),
-                                  Text(
-                                      'Recommended Players',
-                                      style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight:
-                                          FontWeight.w700,
-                                          fontSize: 15)),
-                                ]),
-                                Row(children: [
-                                  Text('View All',
-                                      style: TextStyle(
-                                          color: Color(
-                                              0xFF1A6BFF),
-                                          fontSize: 13,
-                                          fontWeight:
-                                          FontWeight.w600)),
-                                  Icon(Icons.chevron_right,
-                                      color: Color(0xFF1A6BFF),
-                                      size: 16),
-                                ]),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment.spaceAround,
-                              children: [
-                                _RecommendCard(
-                                    value: '$_recCount',
-                                    label:
-                                    'Players\nRecommended',
-                                    icon: Icons.people),
-                                _RecommendCard(
-                                    value: '$_playerCount',
-                                    label: 'Players\nCoached',
-                                    icon: Icons
-                                        .check_circle_outline,
-                                    color: const Color(
-                                        0xFF00C853)),
-                                _RecommendCard(
-                                    value: '$_matchCount',
-                                    label: 'Matches\nCompleted',
-                                    icon: Icons
-                                        .emoji_events_outlined,
-                                    color: const Color(
-                                        0xFFFFB300)),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            Container(
-                              padding:
-                              const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.white
-                                    .withOpacity(0.03),
-                                borderRadius:
-                                BorderRadius.circular(10),
-                                border: Border.all(
-                                    color: Colors.white10),
-                              ),
-                              child: Row(children: const [
-                                Icon(Icons.info_outline,
-                                    color: Colors.white38,
-                                    size: 14),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                      'Helping players get noticed by academies and clubs.',
-                                      style: TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: 12)),
-                                ),
-                              ]),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ── Settings & Logout ──
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16),
-                      child: Column(children: [
-                        _SettingsItem(
-                          icon: Icons.settings_outlined,
-                          label: 'Settings',
-                          onTap: () =>
-                              _showSettings(context),
-                        ),
-                        const SizedBox(height: 8),
-                        _SettingsItem(
-                          icon: Icons.logout,
-                          label: 'Logout',
-                          isLogout: true,
-                          onTap: () =>
-                              _showLogout(context),
-                        ),
-                      ]),
-                    ),
-
-                    const SizedBox(height: 32),
+                    _identityCard(),
+                    const SizedBox(height: 14),
+                    _statsRow(),
+                    const SizedBox(height: 14),
+                    _aboutCard(),
+                    const SizedBox(height: 14),
+                    _experienceCard(),
+                    const SizedBox(height: 14),
+                    _recommendedCard(),
+                    const SizedBox(height: 18),
+                    _settingsSection(),
                   ],
                 ),
               ),
-            ),
-          ],
-        ),
       ),
     );
   }
 
-  // ── 3 Dots Menu ──
-  void _showMoreMenu(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF111111),
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-              top: Radius.circular(20))),
-      builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Options',
+  // ── Header ──
+  Widget _header() => Row(children: [
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
+            Text('Coach Profile',
                 style: TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
+                    fontSize: 24,
                     fontWeight: FontWeight.w800)),
-            const SizedBox(height: 16),
-
-            // Edit Profile
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00C853)
-                      .withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.edit_outlined,
-                    color: Color(0xFF00C853), size: 20),
-              ),
-              title: const Text('Edit Profile',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15)),
-              subtitle: const Text(
-                  'Update your name, photo and details',
-                  style: TextStyle(
-                      color: Colors.white38, fontSize: 12)),
-              trailing: const Icon(Icons.chevron_right,
-                  color: Colors.white24),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _showEditProfile(context);
-              },
-            ),
-
-            const Divider(color: Colors.white10),
-
-            // Share Profile
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A6BFF)
-                      .withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.share_outlined,
-                    color: Color(0xFF1A6BFF), size: 20),
-              ),
-              title: const Text('Share Profile',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15)),
-              subtitle: const Text(
-                  'Share your coach profile link',
-                  style: TextStyle(
-                      color: Colors.white38, fontSize: 12)),
-              trailing: const Icon(Icons.chevron_right,
-                  color: Colors.white24),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _shareProfile(context);
-              },
-            ),
-
-            const Divider(color: Colors.white10),
-
-            // Report
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.report_outlined,
-                    color: Colors.red, size: 20),
-              ),
-              title: const Text('Report',
-                  style: TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15)),
-              subtitle: const Text(
-                  'Report an issue or concern',
-                  style: TextStyle(
-                      color: Colors.white38, fontSize: 12)),
-              trailing: const Icon(Icons.chevron_right,
-                  color: Colors.white24),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _showReport(context);
-              },
-            ),
-
-            const SizedBox(height: 8),
-          ],
+            Text('View coach details and track impact',
+                style: TextStyle(color: Colors.white54, fontSize: 11)),
+          ]),
         ),
+        GestureDetector(
+          onTap: () => _shareProfile(context),
+          child: Column(children: const [
+            Icon(Icons.ios_share, color: Colors.white, size: 20),
+            SizedBox(height: 2),
+            Text('Share',
+                style: TextStyle(color: Colors.white54, fontSize: 9.5)),
+          ]),
+        ),
+        const SizedBox(width: 18),
+        GestureDetector(
+          onTap: () => _showEditProfile(context),
+          child: Column(children: const [
+            Icon(Icons.more_horiz, color: Colors.white, size: 20),
+            SizedBox(height: 2),
+            Text('More',
+                style: TextStyle(color: Colors.white54, fontSize: 9.5)),
+          ]),
+        ),
+      ]);
+
+  // ── Identity card ──
+  Widget _identityCard() {
+    final firstCert = _certs.isNotEmpty ? _certs.first : null;
+
+    Widget infoRow(IconData icon, String text) => Padding(
+          padding: const EdgeInsets.only(top: 5),
+          child: Row(children: [
+            Icon(icon, size: 13, color: Colors.white54),
+            const SizedBox(width: 7),
+            Flexible(
+              child: Text(text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(color: Colors.white70, fontSize: 12)),
+            ),
+          ]),
+        );
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14142B),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white10),
       ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Stack(children: [
+          AvatarCircle(
+            avatarUrl: _avatarUrl,
+            name: _name.isEmpty ? 'C' : _name,
+            size: 92,
+            borderColor: AppColors.primary,
+          ),
+          Positioned(
+            bottom: 2,
+            right: 2,
+            child: GestureDetector(
+              onTap: () async {
+                final url = await pickAndUploadAvatar(
+                    context, ImageSource.gallery,
+                    accent: AppColors.primary);
+                if (url != null && mounted) {
+                  setState(() => _avatarUrl = url);
+                }
+              },
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1B1B38),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: const Icon(Icons.camera_alt_outlined,
+                    size: 14, color: Colors.white),
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(width: 14),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(
+                child: Text(_name.isEmpty ? 'Coach' : _name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800)),
+              ),
+              if (_isVerified) ...[
+                const SizedBox(width: 5),
+                const Icon(Icons.verified,
+                    color: AppColors.primaryLight, size: 15),
+              ],
+            ]),
+            if (_title.isNotEmpty)
+              Text(_title,
+                  style: const TextStyle(
+                      color: AppColors.primaryLight,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600)),
+            const SizedBox(height: 2),
+            if (_academy.isNotEmpty)
+              infoRow(Icons.shield_outlined, _academy),
+            if (_location.isNotEmpty || _years != null)
+              infoRow(
+                  Icons.location_on_outlined,
+                  [
+                    if (_location.isNotEmpty) _location,
+                    if (_years != null) '${_years}+ Years Experience',
+                  ].join('  •  ')),
+            if (firstCert != null)
+              infoRow(Icons.workspace_premium_outlined,
+                  firstCert['title'] as String? ?? ''),
+            if (_isVerified)
+              Padding(
+                padding: const EdgeInsets.only(top: 7),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00C853).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text('✓ Verified Coach',
+                      style: TextStyle(
+                          color: Color(0xFF00C853),
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700)),
+                ),
+              ),
+          ]),
+        ),
+      ]),
     );
   }
 
-  // ── Edit Profile ──
+  // ── Stats row ──
+  Widget _statsRow() {
+    Widget stat(IconData icon, String value, String label) => Expanded(
+          child: Column(children: [
+            Icon(icon, size: 17, color: AppColors.primaryLight),
+            const SizedBox(height: 4),
+            Text(value,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800)),
+            Text(label,
+                textAlign: TextAlign.center,
+                style:
+                    const TextStyle(color: Colors.white38, fontSize: 10)),
+          ]),
+        );
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14142B),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(children: [
+        stat(Icons.people_outline,
+            '${(_counts['players'] as num?)?.toInt() ?? 0}',
+            'Total\nPlayers'),
+        stat(Icons.emoji_events_outlined,
+            '${(_counts['leagues'] as num?)?.toInt() ?? 0}', 'Leagues'),
+        stat(Icons.workspace_premium_outlined, '${_certs.length}',
+            'Certificates'),
+        stat(Icons.calendar_today_outlined,
+            _years == null ? '—' : '${_years}+', 'Years\nExperience'),
+      ]),
+    );
+  }
+
+  // ── About Coach (with the edit pencil) ──
+  Widget _aboutCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14142B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.person_outline,
+              color: AppColors.primaryLight, size: 18),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('About Coach',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15)),
+          ),
+          GestureDetector(
+            onTap: () => _showEditProfile(context),
+            child: const Icon(Icons.edit_outlined,
+                color: Colors.white38, size: 18),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        Text(
+            _bio.isEmpty
+                ? 'No bio added yet. Tap the pencil to add one.'
+                : _bio,
+            style: const TextStyle(
+                color: Colors.white54, fontSize: 13, height: 1.6)),
+      ]),
+    );
+  }
+
+  // ── Experience ──
+  Widget _experienceCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14142B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: const [
+          Icon(Icons.work_outline, color: AppColors.primaryLight, size: 18),
+          SizedBox(width: 8),
+          Text('Experience',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15)),
+        ]),
+        const SizedBox(height: 14),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Column(children: [
+            Container(
+              width: 10,
+              height: 10,
+              decoration: const BoxDecoration(
+                  color: AppColors.primary, shape: BoxShape.circle),
+            ),
+            Container(width: 2, height: 54, color: Colors.white10),
+          ]),
+          const SizedBox(width: 12),
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                  _years == null
+                      ? 'Present'
+                      : '${DateTime.now().year - _years!} – Present',
+                  style: const TextStyle(
+                      color: AppColors.primaryLight,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text(_title.isEmpty ? 'Coach' : _title,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700)),
+              Text(
+                  [
+                    if (_academy.isNotEmpty) _academy,
+                    if (_location.isNotEmpty) _location,
+                  ].join(', '),
+                  style: const TextStyle(
+                      color: Colors.white54, fontSize: 12)),
+              if (_bio.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(_bio,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11.5,
+                          height: 1.4)),
+                ),
+            ]),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  // ── Recommended Players impact card ──
+  Widget _recommendedCard() {
+    final recs = (_counts['recommendations'] as num?)?.toInt() ?? 0;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF14142B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: const [
+          Icon(Icons.recommend_outlined,
+              color: AppColors.primaryLight, size: 18),
+          SizedBox(width: 8),
+          Text('Recommended Players',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15)),
+        ]),
+        const SizedBox(height: 14),
+        Row(children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: AppColors.primary.withOpacity(0.12),
+              border:
+                  Border.all(color: AppColors.primary.withOpacity(0.4)),
+            ),
+            child: const Icon(Icons.person_search_outlined,
+                color: AppColors.primaryLight, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Text('$recs',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800)),
+          const SizedBox(width: 8),
+          const Text('Players\nRecommended',
+              style: TextStyle(
+                  color: Colors.white54, fontSize: 11, height: 1.3)),
+        ]),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(children: const [
+            Icon(Icons.thumb_up_alt_outlined,
+                color: Colors.white38, size: 14),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                  'Helping players get noticed by academies and clubs.',
+                  style: TextStyle(color: Colors.white54, fontSize: 11.5)),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  // ── Settings & Logout ──
+  Widget _settingsSection() {
+    Widget item(IconData icon, String label, VoidCallback onTap,
+            {bool danger = false}) =>
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            decoration: BoxDecoration(
+              color: const Color(0xFF14142B),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Row(children: [
+              Icon(icon,
+                  size: 18,
+                  color: danger ? Colors.redAccent : Colors.white70),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(label,
+                    style: TextStyle(
+                        color: danger ? Colors.redAccent : Colors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600)),
+              ),
+              const Icon(Icons.chevron_right,
+                  color: Colors.white24, size: 18),
+            ]),
+          ),
+        );
+    return Column(children: [
+      item(Icons.edit_outlined, 'Edit Profile',
+          () => _showEditProfile(context)),
+      item(Icons.share_outlined, 'Share Profile',
+          () => _shareProfile(context)),
+      item(Icons.logout, 'Logout', () => _showLogout(context),
+          danger: true),
+    ]);
+  }
+
   void _showEditProfile(BuildContext context) {
     final nameController = TextEditingController(text: _name);
     final roleController = TextEditingController(text: _title);
@@ -894,7 +659,6 @@ class _CoachProfileScreenState
     );
   }
 
-  // ── Share Profile ──
   void _shareProfile(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -1023,350 +787,6 @@ class _CoachProfileScreenState
     );
   }
 
-  // ── Report ──
-  void _showReport(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF111111),
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-              top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Report',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800)),
-            const SizedBox(height: 6),
-            const Text(
-                'What would you like to report?',
-                style: TextStyle(
-                    color: Colors.white54, fontSize: 13)),
-            const SizedBox(height: 16),
-            ...[
-              'Inappropriate content',
-              'Fake profile',
-              'Spam or misleading',
-              'Harassment or bullying',
-              'Other',
-            ].map((reason) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.flag_outlined,
-                  color: Colors.red, size: 20),
-              title: Text(reason,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14)),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        'Reported: $reason. Thank you! ✅'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              },
-            )),
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel',
-                    style: TextStyle(
-                        color: Colors.white38))),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Photo Options ──
-  void _showPhotoOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF111111),
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-              top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Update Profile Photo',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800)),
-            const SizedBox(height: 20),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.camera_alt,
-                  color: Color(0xFF00C853)),
-              title: const Text('Take Photo',
-                  style: TextStyle(color: Colors.white)),
-              onTap: () async {
-                Navigator.pop(context);
-                final url = await pickAndUploadAvatar(
-                    context, ImageSource.camera,
-                    accent: const Color(0xFF00C853));
-                if (url != null && mounted) {
-                  setState(() => _avatarUrl = url);
-                }
-              },
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.photo_library,
-                  color: Color(0xFF00C853)),
-              title: const Text('Choose from Gallery',
-                  style: TextStyle(color: Colors.white)),
-              onTap: () async {
-                Navigator.pop(context);
-                final url = await pickAndUploadAvatar(
-                    context, ImageSource.gallery,
-                    accent: const Color(0xFF00C853));
-                if (url != null && mounted) {
-                  setState(() => _avatarUrl = url);
-                }
-              },
-            ),
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel',
-                    style:
-                    TextStyle(color: Colors.white38))),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Settings ──
-  void _showSettings(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF111111),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-              top: Radius.circular(20))),
-      builder: (_) => StatefulBuilder(
-        builder: (context, setSheetState) => Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Settings',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800)),
-              const SizedBox(height: 16),
-
-              // Notifications
-              _SettingsTile(
-                icon: Icons.notifications_outlined,
-                label: 'Notifications',
-                subtitle: 'Get match & league alerts',
-                trailing: Switch(
-                  value: _notificationsOn,
-                  onChanged: (v) {
-                    setSheetState(
-                            () => _notificationsOn = v);
-                    setState(() => _notificationsOn = v);
-                  },
-                  activeColor: const Color(0xFF00C853),
-                ),
-              ),
-
-              const Divider(color: Colors.white10),
-
-              // Dark Mode
-              _SettingsTile(
-                icon: Icons.dark_mode_outlined,
-                label: 'Dark Mode',
-                subtitle: 'Switch app appearance',
-                trailing: Switch(
-                  value: _darkMode,
-                  onChanged: (v) {
-                    setSheetState(() => _darkMode = v);
-                    setState(() => _darkMode = v);
-                  },
-                  activeColor: const Color(0xFF00C853),
-                ),
-              ),
-
-              const Divider(color: Colors.white10),
-
-              // Private Profile
-              _SettingsTile(
-                icon: Icons.lock_outline,
-                label: 'Private Profile',
-                subtitle: 'Only followers can see your profile',
-                trailing: Switch(
-                  value: _privateProfile,
-                  onChanged: (v) {
-                    setSheetState(
-                            () => _privateProfile = v);
-                    setState(() => _privateProfile = v);
-                  },
-                  activeColor: const Color(0xFF00C853),
-                ),
-              ),
-
-              const Divider(color: Colors.white10),
-
-              // Privacy
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(
-                    Icons.privacy_tip_outlined,
-                    color: Color(0xFF00C853),
-                    size: 22),
-                title: const Text('Privacy Policy',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500)),
-                subtitle: const Text(
-                    'Read our privacy policy',
-                    style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 12)),
-                trailing: const Icon(Icons.chevron_right,
-                    color: Colors.white24),
-                onTap: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(
-                    const SnackBar(
-                        content:
-                        Text('Opening Privacy Policy...'),
-                        backgroundColor:
-                        Color(0xFF00C853)),
-                  );
-                },
-              ),
-
-              const Divider(color: Colors.white10),
-
-              // Terms
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(
-                    Icons.description_outlined,
-                    color: Color(0xFF00C853),
-                    size: 22),
-                title: const Text('Terms of Service',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500)),
-                subtitle: const Text(
-                    'Read our terms and conditions',
-                    style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 12)),
-                trailing: const Icon(Icons.chevron_right,
-                    color: Colors.white24),
-                onTap: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(
-                    const SnackBar(
-                        content: Text(
-                            'Opening Terms of Service...'),
-                        backgroundColor:
-                        Color(0xFF00C853)),
-                  );
-                },
-              ),
-
-              const Divider(color: Colors.white10),
-
-              // Help
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(
-                    Icons.help_outline,
-                    color: Color(0xFF00C853),
-                    size: 22),
-                title: const Text('Help & Support',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500)),
-                subtitle: const Text(
-                    'Get help or contact us',
-                    style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 12)),
-                trailing: const Icon(Icons.chevron_right,
-                    color: Colors.white24),
-                onTap: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(
-                    const SnackBar(
-                        content:
-                        Text('Opening Help & Support...'),
-                        backgroundColor:
-                        Color(0xFF00C853)),
-                  );
-                },
-              ),
-
-              const SizedBox(height: 8),
-
-              // Logout from settings too
-              GestureDetector(
-                onTap: () {
-                  Navigator.pop(context);
-                  Future.delayed(
-                    const Duration(milliseconds: 200),
-                        () => _showLogout(context),
-                  );
-                },
-                child: Container(
-                  width: double.infinity,
-                  padding:
-                  const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: Colors.red.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment:
-                    MainAxisAlignment.center,
-                    children: const [
-                      Icon(Icons.logout,
-                          color: Colors.red, size: 18),
-                      SizedBox(width: 8),
-                      Text('Logout',
-                          style: TextStyle(
-                              color: Colors.red,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15)),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Logout ──
   void _showLogout(BuildContext context) {
     showDialog(
       context: context,
@@ -1412,8 +832,6 @@ class _CoachProfileScreenState
   }
 }
 
-// ── Helper Widgets ────────────────────────────────────────────────────
-
 class _EditField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
@@ -1453,6 +871,7 @@ class _EditField extends StatelessWidget {
   }
 }
 
+
 class _ShareOption extends StatelessWidget {
   final String emoji, label;
   final Color color;
@@ -1487,207 +906,3 @@ class _ShareOption extends StatelessWidget {
   }
 }
 
-class _SettingsTile extends StatelessWidget {
-  final IconData icon;
-  final String label, subtitle;
-  final Widget trailing;
-  const _SettingsTile(
-      {required this.icon,
-        required this.label,
-        required this.subtitle,
-        required this.trailing});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading:
-      Icon(icon, color: const Color(0xFF00C853), size: 22),
-      title: Text(label,
-          style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w500)),
-      subtitle: Text(subtitle,
-          style:
-          const TextStyle(color: Colors.white38, fontSize: 12)),
-      trailing: trailing,
-    );
-  }
-}
-
-class _StatCol extends StatelessWidget {
-  final IconData icon;
-  final String value, label;
-  const _StatCol(
-      {required this.icon,
-        required this.value,
-        required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(children: [
-      Icon(icon, color: Colors.white38, size: 20),
-      const SizedBox(height: 4),
-      Text(value,
-          style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w800)),
-      Text(label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-              color: Colors.white38, fontSize: 10)),
-    ]);
-  }
-}
-
-class _Divider extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-        height: 40, width: 1, color: Colors.white10);
-  }
-}
-
-class _ExperienceTile extends StatelessWidget {
-  final String period, role, org, desc;
-  final bool isActive;
-  const _ExperienceTile(
-      {required this.period,
-        required this.role,
-        required this.org,
-        required this.desc,
-        required this.isActive});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Column(children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isActive
-                  ? const Color(0xFF1A6BFF)
-                  : Colors.white24,
-            ),
-          ),
-          Container(
-              width: 1, height: 60, color: Colors.white10),
-        ]),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(period,
-                  style: TextStyle(
-                      color: isActive
-                          ? const Color(0xFF1A6BFF)
-                          : Colors.white38,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600)),
-              Text(role,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14)),
-              Text(org,
-                  style: const TextStyle(
-                      color: Colors.white54,
-                      fontSize: 12)),
-              const SizedBox(height: 4),
-              Text(desc,
-                  style: const TextStyle(
-                      color: Colors.white38,
-                      fontSize: 12,
-                      height: 1.4)),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RecommendCard extends StatelessWidget {
-  final String value, label;
-  final IconData icon;
-  final Color color;
-  const _RecommendCard(
-      {required this.value,
-        required this.label,
-        required this.icon,
-        this.color = const Color(0xFF1A6BFF)});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(children: [
-      Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, color: color, size: 24),
-      ),
-      const SizedBox(height: 6),
-      Text(value,
-          style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w800)),
-      Text(label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-              color: Colors.white38, fontSize: 10)),
-    ]);
-  }
-}
-
-class _SettingsItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isLogout;
-  final VoidCallback onTap;
-  const _SettingsItem(
-      {required this.icon,
-        required this.label,
-        required this.onTap,
-        this.isLogout = false});
-
-  @override
-  Widget build(BuildContext context) {
-    // ListTile paints its ink on the nearest Material — a DecoratedBox here
-    // hid it and threw a debug assertion. Material carries the color/shape.
-    return Material(
-      color: const Color(0xFF111111),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(
-            color: isLogout
-                ? Colors.red.withOpacity(0.3)
-                : Colors.white10),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        onTap: onTap,
-        leading: Icon(icon,
-            color: isLogout ? Colors.red : const Color(0xFF00C853),
-            size: 22),
-        title: Text(label,
-            style: TextStyle(
-                color: isLogout ? Colors.red : Colors.white,
-                fontWeight: FontWeight.w500,
-                fontSize: 15)),
-        trailing: isLogout
-            ? null
-            : const Icon(Icons.chevron_right,
-            color: Colors.white24),
-      ),
-    );
-  }
-}
