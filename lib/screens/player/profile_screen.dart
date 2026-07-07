@@ -72,6 +72,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                   children: [
                     Row(children: [
+                      if (Navigator.canPop(context))
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: const Padding(
+                            padding: EdgeInsets.only(right: 12),
+                            child: Icon(Icons.arrow_back_ios,
+                                color: Colors.white, size: 20),
+                          ),
+                        ),
                       const Expanded(
                         child: Text('Profile',
                             style: TextStyle(

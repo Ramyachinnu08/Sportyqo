@@ -32,7 +32,6 @@ class _HomeScreenState extends State<HomeScreen> {
     const DugoutScreen(),
     const PlaybookScreen(),
     const PerformanceScreen(),
-    ProfileScreen(playerId: widget.playerId),
   ];
 
   @override
@@ -72,10 +71,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icon(Icons.bar_chart_outlined),
                 activeIcon: Icon(Icons.bar_chart),
                 label: 'Performance'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.person_outline),
-                activeIcon: Icon(Icons.person),
-                label: 'Profile'),
           ],
         ),
       ),
@@ -270,11 +265,21 @@ class _HomeTabState extends State<_HomeTab> {
           ]),
         ),
         const SizedBox(width: 10),
-        AvatarCircle(
-          avatarUrl: _avatarUrl,
-          name: _fullName.isEmpty ? 'P' : _fullName,
-          size: 44,
-          borderColor: AppColors.primary,
+        GestureDetector(
+          onTap: () async {
+            await Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) =>
+                        ProfileScreen(playerId: widget.playerId)));
+            _load(); // reflect avatar/name edits made in the profile
+          },
+          child: AvatarCircle(
+            avatarUrl: _avatarUrl,
+            name: _fullName.isEmpty ? 'P' : _fullName,
+            size: 44,
+            borderColor: AppColors.primary,
+          ),
         ),
       ],
     );
