@@ -1,0 +1,74 @@
+name: Build & Release APK
+
+# Runs whenever you push a version tag, e.g.:
+#   git tag v1.0.0
+#   git push origin v1.0.0
+# The built APKs get attached to a GitHub Release for that tag.
+on:
+  push:
+    tags:
+      - "v*"
+  # Also allow manual runs from the Actions tab (uploads artifacts only).
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to create the Release and upload assets
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build release APKs
+        # universal APK (works on every phone) + smaller per-ABI APKs
+        run: |
+          flutter build apk --release
+          flutter build apk --release --split-per-abi
+
+      - name: Rename outputs
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/SportyQo-${{ github.ref_name }}-universal.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/SportyQo-${{ github.ref_name }}-arm64.apk || true
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/SportyQo-${{ github.ref_name }}-arm32.apk || true
+
+      - name: Upload build artifacts (manual runs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sportyqo-apks
+          path: dist/*.apk
+
+      - name: Create GitHub Release with APKs
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SportyQo ${{ github.ref_name }}
+          generate_release_notes: true
+          files: dist/*.apk
+          body: |
+            ## 📲 Install SportyQo on Android
+            1. Download **SportyQo-${{ github.ref_name }}-universal.apk** below
+               (or the smaller `arm64` one if your phone is from ~2018 or later).
+            2. Open the downloaded file. If Android warns about unknown apps,
+               allow **"Install unknown apps"** for your browser/files app.
+            3. Open SportyQo and sign up!
